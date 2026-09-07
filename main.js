@@ -187,9 +187,18 @@ function appearanceBackgroundColor(hex) {
 
 const DEFAULT_PREFERENCES = {
   notificationsEnabled: true,
-  perfectCastEnabled: true,
+  castPower: 96,
   autoFixOffsets: true
 };
+
+const CAST_POWER_MIN = 28;
+const CAST_POWER_MAX = 96;
+
+function clampCastPower(value, fallback = CAST_POWER_MAX) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(CAST_POWER_MAX, Math.max(CAST_POWER_MIN, Math.round(n)));
+}
 
 function preferencesPath() {
   return path.join(app.getPath('userData'), 'preferences.json');
@@ -198,21 +207,36 @@ function preferencesPath() {
 function readPreferences() {
   try {
     const raw = JSON.parse(fs.readFileSync(preferencesPath(), 'utf8'));
+    const castPower = Object.prototype.hasOwnProperty.call(raw, 'castPower')
+      ? clampCastPower(raw.castPower)
+      : clampCastPower(raw.perfectCastEnabled === false ? CAST_POWER_MIN : CAST_POWER_MAX);
     return {
       notificationsEnabled: raw.notificationsEnabled !== false,
-      perfectCastEnabled: raw.perfectCastEnabled !== false,
+      castPower,
+      // Kept for older UI sessions; derived from slider
+      perfectCastEnabled: castPower >= 62,
       autoFixOffsets: raw.autoFixOffsets !== false
     };
   } catch {
-    return { ...DEFAULT_PREFERENCES };
+    return { ...DEFAULT_PREFERENCES, perfectCastEnabled: true };
   }
 }
 
 function writePreferences(partial) {
-  const next = { ...readPreferences(), ...(partial || {}) };
+  const current = readPreferences();
+  const next = { ...current, ...(partial || {}) };
   next.notificationsEnabled = next.notificationsEnabled !== false;
-  next.perfectCastEnabled = next.perfectCastEnabled !== false;
   next.autoFixOffsets = next.autoFixOffsets !== false;
+
+  if (partial && Object.prototype.hasOwnProperty.call(partial, 'castPower')) {
+    next.castPower = clampCastPower(partial.castPower, current.castPower);
+  } else if (partial && Object.prototype.hasOwnProperty.call(partial, 'perfectCastEnabled')) {
+    next.castPower = partial.perfectCastEnabled === false ? CAST_POWER_MIN : CAST_POWER_MAX;
+  } else {
+    next.castPower = clampCastPower(next.castPower, CAST_POWER_MAX);
+  }
+  next.perfectCastEnabled = next.castPower >= 62;
+
   fs.mkdirSync(path.dirname(preferencesPath()), { recursive: true });
   fs.writeFileSync(preferencesPath(), JSON.stringify(next, null, 2), 'utf8');
   return next;
@@ -339,7 +363,8 @@ function applyPersistedAppraiseSettings(eng) {
   const saved = readAppraiseSettings();
   const prefs = readPreferences();
   eng.setSettings({
-    cast_mode: prefs.perfectCastEnabled ? 'full' : 'short',
+    cast_mode: 'custom',
+    cast_power_custom: prefs.castPower,
     auto_appraise_enabled: !!saved.auto_appraise_enabled,
     auto_appraise_mutation: saved.auto_appraise_mutation || 'Mythical',
     appraise_delay_ms: Number(saved.appraise_delay_ms) || 500,
@@ -498,10 +523,17 @@ ipcMain.handle('preferences:get', async () => readPreferences());
 
 ipcMain.handle('preferences:save', async (_event, payload) => {
   const saved = writePreferences(payload || {});
-  if (payload && Object.prototype.hasOwnProperty.call(payload, 'perfectCastEnabled')) {
+  const castChanged =
+    payload &&
+    (Object.prototype.hasOwnProperty.call(payload, 'castPower') ||
+      Object.prototype.hasOwnProperty.call(payload, 'perfectCastEnabled'));
+  if (castChanged) {
     try {
       if (ensureMacroAllowed().ok) {
-        getEngine().setSettings({ cast_mode: saved.perfectCastEnabled ? 'full' : 'short' });
+        getEngine().setSettings({
+          cast_mode: 'custom',
+          cast_power_custom: saved.castPower
+        });
       }
     } catch {
       // ignore before setup completes

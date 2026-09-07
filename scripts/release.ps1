@@ -6,7 +6,8 @@
 param(
   [string]$ReleaseVersion = '',
   [string]$CommitMessage = '',
-  [switch]$Yes
+  [switch]$Yes,
+  [switch]$RepairOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -134,6 +135,17 @@ function Get-ReleaseJson([string]$SemVer, [string]$Token) {
   }
 }
 
+function Remove-ReleaseAsset([int]$AssetId, [string]$Token, [string]$Name) {
+  $headers = @{
+    Authorization = "Bearer $Token"
+    Accept        = 'application/vnd.github+json'
+    'User-Agent'  = 'Macro-Release-Script'
+  }
+  Write-Step "Removing old release asset: $Name"
+  Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/CodingForLife123/Macro/releases/assets/$AssetId" -Headers $headers | Out-Null
+  Write-Ok "Removed $Name"
+}
+
 function Upload-ReleaseAsset([string]$UploadUrlTemplate, [string]$FilePath, [string]$Token) {
   $name = [IO.Path]::GetFileName($FilePath)
   $base = $UploadUrlTemplate -replace '\{\?name,label\}', ''
@@ -145,50 +157,85 @@ function Upload-ReleaseAsset([string]$UploadUrlTemplate, [string]$FilePath, [str
     'User-Agent'   = 'Macro-Release-Script'
     'Content-Type' = 'application/octet-stream'
   }
-  Write-Step "Uploading missing asset: $name"
+  Write-Step "Uploading asset: $name"
   Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -Body $bytes | Out-Null
   Write-Ok "Uploaded $name"
 }
 
+function Ensure-LocalSetupBuild([string]$SemVer) {
+  $exePath = Join-Path 'dist' ("Macro-Setup-" + $SemVer + '.exe')
+  $ymlPath = Join-Path 'dist' 'latest.yml'
+  $mapPath = Join-Path 'dist' ("Macro-Setup-" + $SemVer + '.exe.blockmap')
+
+  $needsBuild = $false
+  if (-not (Test-Path $exePath) -or -not (Test-Path $ymlPath) -or -not (Test-Path $mapPath)) {
+    $needsBuild = $true
+  } else {
+    $yml = Get-Content -Raw $ymlPath
+    if ($yml -notmatch [regex]::Escape('version: ' + $SemVer)) {
+      $needsBuild = $true
+    } else {
+      # latest.yml size must match the local exe or checksums will fail for users
+      $exeSize = (Get-Item $exePath).Length
+      if ($yml -notmatch ('size:\s*' + $exeSize)) {
+        Write-WarnLine 'dist latest.yml size does not match local Setup.exe - rebuilding one coherent set...'
+        $needsBuild = $true
+      }
+    }
+  }
+
+  if ($needsBuild) {
+    Write-Step ("Building Setup " + $SemVer + ' (single coherent exe + latest.yml + blockmap)')
+    & npx electron-builder --win
+    if ($LASTEXITCODE -ne 0) {
+      throw 'electron-builder failed while preparing release assets'
+    }
+  }
+
+  foreach ($path in @($exePath, $ymlPath, $mapPath)) {
+    if (-not (Test-Path $path)) {
+      throw ("Missing required dist file after build: " + $path)
+    }
+  }
+}
+
 function Repair-ReleaseAssets([string]$SemVer, [string]$Token) {
+  # Always replace exe + blockmap + latest.yml together from ONE local build.
+  # Uploading a new latest.yml while keeping an older Setup.exe causes sha512 mismatch.
+  Ensure-LocalSetupBuild -SemVer $SemVer
+
   $release = Get-ReleaseJson -SemVer $SemVer -Token $Token
   if (-not $release) {
     Write-WarnLine "Release v$SemVer not found yet - cannot repair assets."
     return $false
   }
 
-  $existing = @($release.assets | ForEach-Object { $_.name })
   $needed = @(
-    "Macro-Setup-$SemVer.exe",
-    "Macro-Setup-$SemVer.exe.blockmap",
+    ("Macro-Setup-" + $SemVer + '.exe'),
+    ("Macro-Setup-" + $SemVer + '.exe.blockmap'),
     'latest.yml'
   )
 
-  $distLatest = Join-Path 'dist' 'latest.yml'
-  if (Test-Path $distLatest) {
-    $latestText = Get-Content -Raw $distLatest
-    $versionLine = 'version: ' + $SemVer
-    if ($latestText -notmatch [regex]::Escape($versionLine)) {
-      Write-WarnLine "dist\latest.yml is not for $SemVer - rebuilding installer metadata..."
-      & npx electron-builder --win
-      if ($LASTEXITCODE -ne 0) {
-        throw 'electron-builder rebuild failed while repairing latest.yml'
+  foreach ($asset in @($release.assets)) {
+    if ($needed -contains $asset.name) {
+      try {
+        Remove-ReleaseAsset -AssetId ([int]$asset.id) -Token $Token -Name $asset.name
+      } catch {
+        Write-ErrLine ("Failed to remove " + $asset.name + ' : ' + $_.Exception.Message)
+        return $false
       }
     }
   }
 
+  # Refresh release metadata after deletes
+  $release = Get-ReleaseJson -SemVer $SemVer -Token $Token
+  if (-not $release) {
+    return $false
+  }
+
   $ok = $true
   foreach ($name in $needed) {
-    if ($existing -contains $name) {
-      Write-Ok "Release already has $name"
-      continue
-    }
     $path = Join-Path 'dist' $name
-    if (-not (Test-Path $path)) {
-      Write-ErrLine "Missing local file: $path"
-      $ok = $false
-      continue
-    }
     try {
       Upload-ReleaseAsset -UploadUrlTemplate $release.upload_url -FilePath $path -Token $Token
     } catch {
@@ -235,21 +282,46 @@ try {
   $env:GH_TOKEN = $token.Trim()
   $env:GITHUB_TOKEN = $env:GH_TOKEN
 
+  if ($RepairOnly) {
+    $current = Get-PackageVersion
+    $fixVer = $current
+    if (-not [string]::IsNullOrWhiteSpace($ReleaseVersion)) {
+      $fixVer = $ReleaseVersion.Trim().TrimStart([char[]]@('v', 'V'))
+    }
+    Write-Step ("Repairing release assets for v" + $fixVer + ' (replace exe + blockmap + latest.yml together)')
+    $repaired = Repair-ReleaseAssets -SemVer $fixVer -Token $env:GH_TOKEN
+    if (-not $repaired) {
+      throw ("Could not repair v" + $fixVer)
+    }
+    Write-Host ''
+    Write-Host ("Fixed: https://github.com/CodingForLife123/Macro/releases/tag/v" + $fixVer) -ForegroundColor Green
+    exit 0
+  }
+
   $current = Get-PackageVersion
   $suggested = Get-NextPatchVersion $current
   Write-Host ''
   Write-Host ("Current version: " + $current)
+  Write-Host 'Tip: type the current version (or "same") to republish without bumping.' -ForegroundColor DarkGray
+  Write-Host 'Note: users already on that version will NOT get an in-app update — bump for that.' -ForegroundColor DarkGray
 
   if (-not [string]::IsNullOrWhiteSpace($ReleaseVersion)) {
-    $newVersion = $ReleaseVersion.Trim().TrimStart([char[]]@('v', 'V'))
+    $rawVersion = $ReleaseVersion.Trim()
+    if ($rawVersion -match '^(same|current|\.)$') {
+      $newVersion = $current
+    } else {
+      $newVersion = $rawVersion.TrimStart([char[]]@('v', 'V'))
+    }
     Write-Ok ("Using version from -ReleaseVersion: " + $newVersion)
   } elseif ($Yes) {
     $newVersion = $suggested
     Write-Ok ("Auto patch bump (-Yes): " + $newVersion)
   } else {
-    $versionInput = Read-Host ("New version to publish [" + $suggested + "] (Enter to accept)")
+    $versionInput = Read-Host ("Version to publish [bump $suggested] (Enter=bump, or type $current / same)")
     if ([string]::IsNullOrWhiteSpace($versionInput)) {
       $newVersion = $suggested
+    } elseif ($versionInput.Trim() -match '^(same|current|\.)$') {
+      $newVersion = $current
     } else {
       $newVersion = $versionInput.Trim().TrimStart([char[]]@('v', 'V'))
     }

@@ -97,17 +97,33 @@
           <div class="section-header section-header--first">
             <h2>Casting</h2>
           </div>
-          <div class="card">
-            <div class="toggle-row">
-              <label class="toggle">
-                <input type="checkbox" id="perfect-cast" checked aria-describedby="perfect-cast-desc">
-                <span class="toggle-track"></span>
-              </label>
-              <div class="toggle-text">
-                <h3 id="perfect-cast-desc">Perfect cast</h3>
-                <p id="perfect-cast-copy">Hold until the power bar is nearly full for max distance. Turn off for a quick short cast.</p>
+          <div class="card cast-card">
+            <div class="cast-head">
+              <div class="cast-title-row">
+                <h3 id="cast-power-title">Cast power</h3>
+                <div class="cast-power-badge" aria-live="polite">
+                  <span id="cast-power-label">96</span><span class="cast-power-unit">%</span>
+                </div>
+                <button type="button" class="help-btn" data-help="Cast power" data-desc="Drag between Super quick (~28% power, faster short casts) and Perfect (~96% power, max distance).">?</button>
               </div>
-              <button type="button" class="help-btn" style="margin-left: auto;" data-help="Perfect cast" data-desc="Perfect cast waits for ~96% power. Quick cast releases early (~28%) for faster fishing with shorter casts.">?</button>
+              <p id="cast-power-copy">Hold until the power bar reaches your target. Higher = longer cast, lower = faster casts.</p>
+            </div>
+            <div class="cast-slider-wrap">
+              <span class="cast-end-label" id="cast-label-quick">Super quick</span>
+              <input
+                type="range"
+                id="cast-power"
+                class="cast-slider"
+                min="28"
+                max="96"
+                value="96"
+                step="1"
+                aria-labelledby="cast-power-title"
+                aria-valuemin="28"
+                aria-valuemax="96"
+                aria-valuenow="96"
+              >
+              <span class="cast-end-label" id="cast-label-perfect">Perfect</span>
             </div>
           </div>
 
@@ -848,9 +864,11 @@
         if (!hotkeys) return;
         document.querySelectorAll('[data-hotkey]').forEach((btn) => {
           const action = btn.dataset.hotkey;
-          const value = hotkeys[action];
           if (btn === listeningHotkeyBtn) return;
-          btn.textContent = hotkeyLabelForAction(action, hotkeys, labels);
+          const label = hotkeyLabelForAction(action, hotkeys, labels);
+          btn.textContent = label;
+          btn.title = 'Click to change key';
+          btn.setAttribute('aria-label', label + ' — click to change key');
         });
         document.querySelectorAll('[data-hotkey-display]').forEach((el) => {
           const action = el.dataset.hotkeyDisplay;
@@ -986,7 +1004,13 @@
           proportional_gain: numVal('prop-gain', 0.65),
           derivative_gain: numVal('deriv-gain', 0.18),
           edge_boundary: numVal('edge-boundary', 0.08),
-          cast_mode: document.getElementById('perfect-cast')?.checked !== false ? 'full' : 'short',
+          cast_mode: 'custom',
+          cast_power_custom: (() => {
+            const el = document.getElementById('cast-power');
+            const n = el ? Number(el.value) : 96;
+            if (!Number.isFinite(n)) return 96;
+            return Math.min(96, Math.max(28, Math.round(n)));
+          })(),
           cast_timeout_ms: 15000,
           post_cast_delay_ms: 150,
           cast_on_timeout: true,
@@ -1054,24 +1078,47 @@
         [
           'update-rate', 'prediction', 'neutral-duty', 'close-threshold',
           'velocity-damping', 'prop-gain', 'deriv-gain', 'edge-boundary',
-          'perfect-cast'
+          'cast-power'
         ].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.addEventListener('change', pushSettings);
         });
 
-        const perfectCastToggle = document.getElementById('perfect-cast');
-        const perfectCastCopy = document.getElementById('perfect-cast-copy');
-        if (perfectCastToggle) {
-          perfectCastToggle.addEventListener('change', async () => {
-            if (perfectCastCopy) {
-              perfectCastCopy.textContent = perfectCastToggle.checked
-                ? 'Hold until the power bar is nearly full for max distance. Turn off for a quick short cast.'
-                : 'Quick cast is on — releases early for faster casts with shorter distance.';
-            }
+        const castPowerSlider = document.getElementById('cast-power');
+        const castPowerLabel = document.getElementById('cast-power-label');
+        const castPowerCopy = document.getElementById('cast-power-copy');
+
+        function castPowerDescription(value) {
+          if (value <= 36) {
+            return 'Super quick cast — releases very early for the fastest cycle and shortest distance.';
+          }
+          if (value >= 88) {
+            return 'Perfect cast — holds until the power bar is nearly full for max distance.';
+          }
+          return 'Balanced cast — release at ' + value + '% power. Higher reaches farther; lower casts faster.';
+        }
+
+        function syncCastPowerUi(value) {
+          const v = Math.min(96, Math.max(28, Math.round(Number(value) || 96)));
+          if (castPowerSlider) {
+            castPowerSlider.value = String(v);
+            castPowerSlider.setAttribute('aria-valuenow', String(v));
+          }
+          if (castPowerLabel) castPowerLabel.textContent = String(v);
+          if (castPowerCopy) castPowerCopy.textContent = castPowerDescription(v);
+          return v;
+        }
+
+        if (castPowerSlider) {
+          castPowerSlider.addEventListener('input', () => {
+            syncCastPowerUi(castPowerSlider.value);
+            pushSettings();
+          });
+          castPowerSlider.addEventListener('change', async () => {
+            const v = syncCastPowerUi(castPowerSlider.value);
             if (!window.preferences || !window.preferences.save) return;
             try {
-              await window.preferences.save({ perfectCastEnabled: perfectCastToggle.checked });
+              await window.preferences.save({ castPower: v });
             } catch {
               showToast('Could not save cast setting.');
             }
@@ -1477,14 +1524,31 @@
           if (autoFixToggle) {
             autoFixToggle.checked = prefs.autoFixOffsets !== false;
           }
-          const perfectCastToggle = document.getElementById('perfect-cast');
-          const perfectCastCopy = document.getElementById('perfect-cast-copy');
-          if (perfectCastToggle) {
-            perfectCastToggle.checked = prefs.perfectCastEnabled !== false;
-            if (perfectCastCopy) {
-              perfectCastCopy.textContent = perfectCastToggle.checked
-                ? 'Hold until the power bar is nearly full for max distance. Turn off for a quick short cast.'
-                : 'Quick cast is on — releases early for faster casts with shorter distance.';
+          const castPowerSlider = document.getElementById('cast-power');
+          if (castPowerSlider) {
+            const migrated =
+              prefs.castPower != null
+                ? prefs.castPower
+                : prefs.perfectCastEnabled === false
+                  ? 28
+                  : 96;
+            const v = Math.min(96, Math.max(28, Math.round(Number(migrated) || 96)));
+            castPowerSlider.value = String(v);
+            castPowerSlider.setAttribute('aria-valuenow', String(v));
+            const castPowerLabel = document.getElementById('cast-power-label');
+            const castPowerCopy = document.getElementById('cast-power-copy');
+            if (castPowerLabel) castPowerLabel.textContent = String(v);
+            if (castPowerCopy) {
+              if (v <= 36) {
+                castPowerCopy.textContent =
+                  'Super quick cast — releases very early for the fastest cycle and shortest distance.';
+              } else if (v >= 88) {
+                castPowerCopy.textContent =
+                  'Perfect cast — holds until the power bar is nearly full for max distance.';
+              } else {
+                castPowerCopy.textContent =
+                  'Balanced cast — release at ' + v + '% power. Higher reaches farther; lower casts faster.';
+              }
             }
           }
         } catch {

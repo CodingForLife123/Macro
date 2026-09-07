@@ -12,6 +12,8 @@
     "publish": "electron-builder --win --publish always",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1",
     "release:auto": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1 -Yes",
+    "release:same": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1 -ReleaseVersion same",
+    "release:fix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1 -RepairOnly",
     "update": "npm run release"
   },
   "keywords": [],
