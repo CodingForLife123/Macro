@@ -17,13 +17,21 @@ release/
 .electron/
 .electron-builder/
 
-# Secrets & local env (add a .env.example if you need a template)
+# Secrets & local env (never commit tokens)
 .env
 .env.*
 !.env.example
 *.pem
 *.p12
 *.key
+*.pfx
+*.token
+GH_TOKEN
+GITHUB_TOKEN
+.npmrc
+auth.json
+credentials.json
+**/secrets/**
 
 # Logs
 logs/

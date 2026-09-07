@@ -8,7 +8,8 @@
     "setup": "npm install",
     "dist": "electron-builder --win",
     "dist:dir": "electron-builder --win --dir",
-    "dist:zip": "electron-builder --win --dir && node scripts/zip-unpacked.js"
+    "dist:zip": "electron-builder --win --dir && node scripts/zip-unpacked.js",
+    "publish": "electron-builder --win --publish always"
   },
   "keywords": [],
   "author": {
@@ -23,6 +24,7 @@
   "license": "AGPL-3.0-only",
   "description": "External Fisch macro (Electron rebuild of OpenMacro XTernal by @anorexc)",
   "dependencies": {
+    "electron-updater": "^6.6.2",
     "koffi": "^2.11.0"
   },
   "devDependencies": {
@@ -54,17 +56,28 @@
       "**/*.node",
       "**/koffi/**"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "CodingForLife123",
+        "repo": "Macro"
+      }
+    ],
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": ["x64"]
         }
       ]
     },
-    "portable": {
-      "artifactName": "${productName}-${version}.exe",
-      "unpackDirName": "Macro"
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "shortcutName": "Macro",
+      "uninstallDisplayName": "Macro"
     }
   }
 }

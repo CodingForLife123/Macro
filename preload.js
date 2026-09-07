@@ -43,5 +43,15 @@ contextBridge.exposeInMainWorld('preferences', {
 contextBridge.exposeInMainWorld('updates', {
   getVersion: () => ipcRenderer.invoke('updates:get-version'),
   check: () => ipcRenderer.invoke('updates:check'),
-  openDownload: (url) => ipcRenderer.invoke('updates:open-download', url)
+  download: () => ipcRenderer.invoke('updates:download'),
+  install: () => ipcRenderer.invoke('updates:install'),
+  onEvent: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('updates:event', handler);
+    return () => ipcRenderer.removeListener('updates:event', handler);
+  }
+});
+
+contextBridge.exposeInMainWorld('appLinks', {
+  openExternal: (url) => ipcRenderer.invoke('app:open-external', url)
 });

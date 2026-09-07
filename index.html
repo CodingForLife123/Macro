@@ -422,16 +422,26 @@
 
         <div class="card" style="margin-top: 12px;">
           <div class="field-group" style="margin-bottom: 12px;">
-            <strong id="updates-latest-label">Latest release</strong>
+            <strong id="updates-latest-label">Latest version</strong>
             <p id="updates-latest-meta" style="margin: 6px 0 0; opacity: 0.8;">Not checked yet.</p>
           </div>
+
+          <div id="updates-progress-wrap" hidden style="margin-bottom: 12px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;opacity:0.8;">
+              <span>Downloading update…</span>
+              <span id="updates-progress-label">0%</span>
+            </div>
+            <div style="height:8px;border-radius:999px;background:rgba(127,127,127,0.18);overflow:hidden;">
+              <div id="updates-progress-bar" style="height:100%;width:0%;background:var(--accent, #0b8a5e);transition:width 120ms linear;"></div>
+            </div>
+          </div>
+
           <div class="config-actions" style="display: flex; flex-wrap: wrap; gap: 8px;">
             <button type="button" class="btn btn-secondary" id="updates-check-btn">Check for updates</button>
             <button type="button" class="btn btn-primary" id="updates-download-btn" hidden>Update</button>
-            <button type="button" class="btn btn-secondary" id="updates-release-btn">Open releases page</button>
           </div>
           <p style="margin: 10px 0 0; font-size: 12px; opacity: 0.75;">
-            Updates never install by themselves. After you click <strong>Update</strong>, download the ZIP and extract it over your Macro folder.
+            Click <strong>Update</strong> to download and install inside Macro. The app will restart when it finishes. No browser or manual ZIP extract needed.
           </p>
         </div>
 
@@ -1507,8 +1517,28 @@
         });
       }
 
-      /** @type {{ downloadUrl?: string, releaseUrl?: string } | null} */
+      /** @type {{ updateAvailable?: boolean } | null} */
       let lastUpdateInfo = null;
+      let updateBusy = false;
+
+      function setUpdateProgress(percent) {
+        const wrap = document.getElementById('updates-progress-wrap');
+        const bar = document.getElementById('updates-progress-bar');
+        const label = document.getElementById('updates-progress-label');
+        const pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+        if (wrap) wrap.hidden = false;
+        if (bar) bar.style.width = pct + '%';
+        if (label) label.textContent = pct + '%';
+      }
+
+      function hideUpdateProgress() {
+        const wrap = document.getElementById('updates-progress-wrap');
+        const bar = document.getElementById('updates-progress-bar');
+        const label = document.getElementById('updates-progress-label');
+        if (wrap) wrap.hidden = true;
+        if (bar) bar.style.width = '0%';
+        if (label) label.textContent = '0%';
+      }
 
       function renderUpdateResult(result) {
         const statusEl = document.getElementById('updates-status');
@@ -1521,30 +1551,32 @@
           currentEl.textContent = 'Version ' + result.currentVersion;
         }
 
+        lastUpdateInfo = result;
+
         if (!result.ok) {
           if (statusEl) statusEl.textContent = result.error || 'Could not check for updates.';
           if (latestMeta) latestMeta.textContent = 'Check failed.';
           if (downloadBtn) downloadBtn.hidden = true;
-          lastUpdateInfo = { releaseUrl: result.releaseUrl };
           return;
         }
 
-        lastUpdateInfo = {
-          downloadUrl: result.downloadUrl,
-          releaseUrl: result.releaseUrl
-        };
-
-        if (result.updateAvailable) {
+        if (result.error && !result.updateAvailable) {
+          if (statusEl) statusEl.textContent = result.error;
+          if (latestMeta) latestMeta.textContent = 'Installed build required for in-app updates.';
+          if (downloadBtn) downloadBtn.hidden = true;
+        } else if (result.updateAvailable) {
           if (statusEl) {
             statusEl.textContent =
               'Update available: v' + result.latestVersion + ' (you have v' + result.currentVersion + ').';
           }
           if (latestMeta) {
-            latestMeta.textContent =
-              (result.releaseName || 'Macro v' + result.latestVersion) +
-              (result.assetName ? ' · ' + result.assetName : '');
+            latestMeta.textContent = result.releaseName || 'Macro v' + result.latestVersion;
           }
-          if (downloadBtn) downloadBtn.hidden = false;
+          if (downloadBtn) {
+            downloadBtn.hidden = false;
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = 'Update';
+          }
         } else {
           if (statusEl) statusEl.textContent = 'You are on the latest version.';
           if (latestMeta) {
@@ -1576,22 +1608,46 @@
           const info = await window.updates.getVersion();
           const currentEl = document.getElementById('updates-current-version');
           if (currentEl) currentEl.textContent = 'Version ' + (info.version || '…');
-          lastUpdateInfo = { releaseUrl: info.releasesPage };
         } catch {
           // ignore
+        }
+
+        if (window.updates.onEvent) {
+          window.updates.onEvent((payload) => {
+            if (!payload || !payload.type) return;
+            if (payload.type === 'progress') {
+              setUpdateProgress(payload.percent);
+            } else if (payload.type === 'downloaded') {
+              setUpdateProgress(100);
+              const statusEl = document.getElementById('updates-status');
+              if (statusEl) statusEl.textContent = 'Update downloaded. Restarting Macro to finish install…';
+            } else if (payload.type === 'error') {
+              updateBusy = false;
+              hideUpdateProgress();
+              const statusEl = document.getElementById('updates-status');
+              if (statusEl) statusEl.textContent = payload.message || 'Update failed.';
+              const downloadBtn = document.getElementById('updates-download-btn');
+              if (downloadBtn) downloadBtn.disabled = false;
+              showToast(payload.message || 'Update failed.');
+            }
+          });
         }
 
         const checkBtn = document.getElementById('updates-check-btn');
         if (checkBtn) {
           checkBtn.addEventListener('click', async () => {
+            if (updateBusy) return;
             checkBtn.disabled = true;
+            hideUpdateProgress();
             const statusEl = document.getElementById('updates-status');
-            if (statusEl) statusEl.textContent = 'Checking GitHub Releases…';
+            if (statusEl) statusEl.textContent = 'Checking for updates…';
             try {
               const result = await window.updates.check();
               renderUpdateResult(result);
               if (result.ok && result.updateAvailable) {
                 showToast('Update available: v' + result.latestVersion);
+              } else if (result.ok && result.error) {
+                showToast(result.error);
               } else if (result.ok) {
                 showToast('You are up to date.');
               } else {
@@ -1609,21 +1665,35 @@
         const downloadBtn = document.getElementById('updates-download-btn');
         if (downloadBtn) {
           downloadBtn.addEventListener('click', async () => {
-            const url = lastUpdateInfo && (lastUpdateInfo.downloadUrl || lastUpdateInfo.releaseUrl);
-            if (!url || !window.updates.openDownload) return;
-            await window.updates.openDownload(url);
-            showToast('Update download opened. Extract the ZIP over your Macro folder, then restart.');
-          });
-        }
+            if (updateBusy || !window.updates.download) return;
+            updateBusy = true;
+            downloadBtn.disabled = true;
+            if (checkBtn) checkBtn.disabled = true;
+            setUpdateProgress(0);
+            const statusEl = document.getElementById('updates-status');
+            if (statusEl) statusEl.textContent = 'Downloading update…';
+            showToast('Downloading update…');
 
-        const releaseBtn = document.getElementById('updates-release-btn');
-        if (releaseBtn) {
-          releaseBtn.addEventListener('click', async () => {
-            const url =
-              (lastUpdateInfo && lastUpdateInfo.releaseUrl) ||
-              'https://github.com/CodingForLife123/Macro/releases/latest';
-            if (window.updates && window.updates.openDownload) {
-              await window.updates.openDownload(url);
+            try {
+              const result = await window.updates.download();
+              if (!result || !result.ok) {
+                throw new Error((result && result.error) || 'Download failed.');
+              }
+              setUpdateProgress(100);
+              if (statusEl) statusEl.textContent = 'Installing update and restarting…';
+              showToast('Installing update…');
+              const installed = await window.updates.install();
+              if (!installed || !installed.ok) {
+                throw new Error((installed && installed.error) || 'Install failed.');
+              }
+              // App should quit/relaunch via quitAndInstall.
+            } catch (err) {
+              updateBusy = false;
+              hideUpdateProgress();
+              downloadBtn.disabled = false;
+              if (checkBtn) checkBtn.disabled = false;
+              if (statusEl) statusEl.textContent = err.message || 'Update failed.';
+              showToast(err.message || 'Update failed.');
             }
           });
         }
@@ -1635,7 +1705,9 @@
         btn.addEventListener('click', async () => {
           const url = btn.getAttribute('data-open-url');
           if (!url) return;
-          if (window.updates && window.updates.openDownload) {
+          if (window.appLinks && window.appLinks.openExternal) {
+            await window.appLinks.openExternal(url);
+          } else if (window.updates && window.updates.openDownload) {
             await window.updates.openDownload(url);
           }
         });

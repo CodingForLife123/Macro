@@ -26,14 +26,27 @@ D:\Downloads\OpenMacro-XTernal-0.2.51\OpenMacro-XTernal-0.2.51\OpenMacro-XTernal
 1. **Requirements setup** — install & verify packages (blocked until ready)  
 2. Macro UI unlocks  
 
-## App updates (GitHub Releases)
+## App updates (in-app, no browser)
 
-Manual only (Updates tab):
-1. User clicks **Check for updates**
-2. If newer, **Update** button appears — user must click it
-3. Browser opens the ZIP download; user extracts over their Macro folder
+Users install **Macro Setup** once (NSIS). Then:
 
-Nothing installs or downloads on its own. Publishing: bump `package.json` version → `npm run dist:zip` → upload ZIP to a new GitHub Release tag (`vX.Y.Z`). Repo should be public so checks work.
+1. Updates tab → **Check for updates**
+2. If newer → **Update**
+3. App downloads + installs inside Macro and restarts
+
+No GitHub UI, no ZIP extract for end users.
+
+### Publish a release (you)
+1. Bump `package.json` version  
+2. Create a GitHub Personal Access Token with `repo` scope  
+3. In PowerShell:
+```powershell
+$env:GH_TOKEN = "your_token"
+npm run publish
+```
+That uploads `Macro-Setup-x.y.z.exe`, `latest.yml`, and blockmap to GitHub Releases.
+
+Old ZIP releases do **not** support in-app update. Users must install from the Setup exe once.
 
 ## How to use the macro
 
@@ -60,26 +73,16 @@ Default fresh-install map (creator defaults):
 
 ## Build / distribute (no npm for end users)
 
-Developers build once; users just run the app.
+Developers build once; users install the Setup app.
 
 ```bash
 npm install
-npm run dist        # single portable .exe (simpler share, slower first/every unpack)
-npm run dist:zip    # ZIP of unpacked app (extract once → Macro.exe opens fast)
+npm run dist          # Macro-Setup-x.y.z.exe (supports in-app updates)
+npm run publish       # build + upload to GitHub Releases (needs GH_TOKEN)
+npm run dist:zip      # optional ZIP (NO in-app updates)
 ```
 
-### Why portable `.exe` feels slow
-The portable build is a self-extracting archive. Each launch unpacks ~90MB into a temp folder before the UI opens. That is normal for Electron portable apps, not a bug in Macro.
-
-### What to share
-| File | Pros | Cons |
-|------|------|------|
-| `Macro-0.0.1.exe` | One file to send | Slow to open (unpacks every time) |
-| `Macro-0.0.1-fast.zip` | Opens fast after extract | User must unzip once |
-
-**Recommended for players:** share `Macro-0.0.1-fast.zip`. They extract the folder, then double‑click `Macro.exe`.
-
-Ignore `dist/win-unpacked/` as a share target by itself unless you zip it.
+**Recommended for players:** share / Release the **Setup installer**. Anyone can install once from your public GitHub Release, then Updates works inside the app.
 
 ### Windows “Company” property
 Explorer always labels that field **Company** (Windows fixed label). The value comes from `package.json` → `author` / `build.win.publisherName` (currently **CodingForLife123**). You cannot rename the label to “Developer”.

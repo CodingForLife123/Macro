@@ -1,131 +1,127 @@
 /**
- * Check GitHub Releases for a newer Macro build (ZIP distribution).
+ * In-app updates via electron-updater + GitHub Releases (NSIS installs).
+ * Users never need to open GitHub — Check / Update stays inside Macro.
  * AGPL-3.0-only — see NOTICE / LICENSE.
  */
 'use strict';
 
-const https = require('https');
 const { app } = require('electron');
 
-const GITHUB_OWNER = 'CodingForLife123';
-const GITHUB_REPO = 'Macro';
-const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-const RELEASES_PAGE = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+/** @type {import('electron-updater').AppUpdater | null} */
+let autoUpdater = null;
+/** @type {((payload: object) => void) | null} */
+let progressSink = null;
+let listenersReady = false;
+/** @type {import('electron-updater').UpdateInfo | null} */
+let lastUpdateInfo = null;
+let updateDownloaded = false;
 
-/**
- * @param {string} value
- * @returns {number[]}
- */
-function parseVersion(value) {
-  const cleaned = String(value || '')
-    .trim()
-    .replace(/^v/i, '')
-    .split(/[+-]/)[0];
-  const parts = cleaned.split('.').map((p) => parseInt(p, 10));
-  return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+function getAutoUpdater() {
+  if (autoUpdater) return autoUpdater;
+  // Lazy-load so plain node scripts don't pull electron-updater hard.
+  ({ autoUpdater } = require('electron-updater'));
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  // Public GitHub repo — no token needed for checking/downloading releases.
+  autoUpdater.allowPrerelease = false;
+  return autoUpdater;
 }
 
 /**
- * @param {string} a
- * @param {string} b
- * @returns {number} 1 if a>b, -1 if a<b, 0 if equal
+ * @param {(payload: object) => void} [onEvent]
  */
-function compareVersions(a, b) {
-  const left = parseVersion(a);
-  const right = parseVersion(b);
-  for (let i = 0; i < 3; i++) {
-    if (left[i] > right[i]) return 1;
-    if (left[i] < right[i]) return -1;
-  }
-  return 0;
-}
+function initAppUpdater(onEvent) {
+  progressSink = typeof onEvent === 'function' ? onEvent : null;
+  if (listenersReady) return;
+  listenersReady = true;
 
-function fetchJson(url, timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(
-      url,
-      {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'Macro-Updater',
-          'X-GitHub-Api-Version': '2022-11-28'
-        },
-        timeout: timeoutMs
-      },
-      (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume();
-          fetchJson(res.headers.location, timeoutMs).then(resolve, reject);
-          return;
-        }
-        if (res.statusCode === 404) {
-          res.resume();
-          reject(
-            new Error(
-              'No public GitHub release found. Publish a Release on CodingForLife123/Macro (repo must be public for update checks).'
-            )
-          );
-          return;
-        }
-        if (res.statusCode !== 200) {
-          res.resume();
-          reject(new Error(`GitHub returned HTTP ${res.statusCode}`));
-          return;
-        }
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-          } catch {
-            reject(new Error('Invalid GitHub response'));
-          }
-        });
-      }
-    );
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Update check timed out'));
+  const updater = getAutoUpdater();
+
+  updater.on('download-progress', (progress) => {
+    emit({
+      type: 'progress',
+      percent: Number(progress.percent) || 0,
+      transferred: Number(progress.transferred) || 0,
+      total: Number(progress.total) || 0,
+      bytesPerSecond: Number(progress.bytesPerSecond) || 0
     });
-    req.on('error', reject);
+  });
+
+  updater.on('update-downloaded', (info) => {
+    updateDownloaded = true;
+    lastUpdateInfo = info;
+    emit({
+      type: 'downloaded',
+      version: info.version,
+      releaseName: info.releaseName || `Macro ${info.version}`,
+      releaseNotes: normalizeNotes(info.releaseNotes)
+    });
+  });
+
+  updater.on('error', (err) => {
+    emit({
+      type: 'error',
+      message: friendlyUpdaterError(err)
+    });
   });
 }
 
-/**
- * Prefer the fast ZIP asset from the release.
- * @param {Array<{ name?: string, browser_download_url?: string }>} assets
- */
-function pickDownloadAsset(assets) {
-  const list = Array.isArray(assets) ? assets : [];
-  const zipFast = list.find((a) => /\.zip$/i.test(a.name || '') && /fast/i.test(a.name || ''));
-  if (zipFast?.browser_download_url) return zipFast;
-  const zipAny = list.find((a) => /\.zip$/i.test(a.name || ''));
-  if (zipAny?.browser_download_url) return zipAny;
-  const exe = list.find((a) => /\.exe$/i.test(a.name || ''));
-  if (exe?.browser_download_url) return exe;
-  return null;
+function emit(payload) {
+  if (progressSink) progressSink(payload);
+}
+
+function normalizeNotes(notes) {
+  if (!notes) return '';
+  if (typeof notes === 'string') return notes.trim();
+  if (Array.isArray(notes)) {
+    return notes
+      .map((n) => (typeof n === 'string' ? n : n && n.note ? String(n.note) : ''))
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+  return String(notes).trim();
+}
+
+function friendlyUpdaterError(err) {
+  const msg = String((err && err.message) || err || 'Update failed');
+  if (/ZIP file|portable|app-update\.yml|latest\.yml/i.test(msg)) {
+    return 'In-app updates need the installed Setup build (not the ZIP/portable). Reinstall Macro with the Setup installer.';
+  }
+  if (/ENOTFOUND|net::|timed out|network/i.test(msg)) {
+    return 'Could not reach the update server. Check your internet and try again.';
+  }
+  if (/404|Not Found/i.test(msg)) {
+    return 'No update package found yet. A Setup release may not be published.';
+  }
+  return msg;
 }
 
 /**
- * @returns {Promise<{
- *   ok: boolean,
- *   updateAvailable: boolean,
- *   currentVersion: string,
- *   latestVersion: string,
- *   releaseName: string,
- *   releaseNotes: string,
- *   downloadUrl: string,
- *   releaseUrl: string,
- *   assetName: string,
- *   error?: string
- * }>}
+ * @returns {Promise<object>}
  */
 async function checkForUpdates() {
   const currentVersion = app.getVersion();
+
+  if (!app.isPackaged) {
+    return {
+      ok: true,
+      updateAvailable: false,
+      currentVersion,
+      latestVersion: currentVersion,
+      releaseName: '',
+      releaseNotes: '',
+      canApplyInApp: false,
+      error: 'In-app updates work in the installed Macro app, not during npm start.'
+    };
+  }
+
   try {
-    const release = await fetchJson(RELEASES_API);
-    const latestVersion = String(release.tag_name || release.name || '').replace(/^v/i, '');
-    if (!latestVersion) {
+    const updater = getAutoUpdater();
+    updateDownloaded = false;
+    const result = await updater.checkForUpdates();
+    const info = result && result.updateInfo;
+    if (!info || !info.version) {
       return {
         ok: false,
         updateAvailable: false,
@@ -133,26 +129,23 @@ async function checkForUpdates() {
         latestVersion: '',
         releaseName: '',
         releaseNotes: '',
-        downloadUrl: '',
-        releaseUrl: RELEASES_PAGE,
-        assetName: '',
-        error: 'Latest release has no version tag.'
+        canApplyInApp: true,
+        error: 'Could not read update information.'
       };
     }
 
-    const asset = pickDownloadAsset(release.assets || []);
-    const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+    lastUpdateInfo = info;
+    const latestVersion = String(info.version);
+    const newer = isNewerVersion(latestVersion, currentVersion);
 
     return {
       ok: true,
-      updateAvailable,
+      updateAvailable: newer,
       currentVersion,
       latestVersion,
-      releaseName: String(release.name || `Macro v${latestVersion}`),
-      releaseNotes: String(release.body || '').trim(),
-      downloadUrl: asset?.browser_download_url || release.html_url || RELEASES_PAGE,
-      releaseUrl: release.html_url || RELEASES_PAGE,
-      assetName: asset?.name || ''
+      releaseName: info.releaseName || `Macro ${latestVersion}`,
+      releaseNotes: normalizeNotes(info.releaseNotes),
+      canApplyInApp: true
     };
   } catch (err) {
     return {
@@ -162,19 +155,76 @@ async function checkForUpdates() {
       latestVersion: '',
       releaseName: '',
       releaseNotes: '',
-      downloadUrl: '',
-      releaseUrl: RELEASES_PAGE,
-      assetName: '',
-      error: err.message || String(err)
+      canApplyInApp: app.isPackaged,
+      error: friendlyUpdaterError(err)
     };
   }
 }
 
+function isNewerVersion(latest, current) {
+  const parse = (v) =>
+    String(v || '')
+      .replace(/^v/i, '')
+      .split(/[+-]/)[0]
+      .split('.')
+      .map((n) => parseInt(n, 10) || 0);
+  const a = parse(latest);
+  const b = parse(current);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) > (b[i] || 0)) return true;
+    if ((a[i] || 0) < (b[i] || 0)) return false;
+  }
+  return false;
+}
+
+/**
+ * Download the update package inside the app (no browser).
+ * @returns {Promise<object>}
+ */
+async function downloadUpdate() {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates only work in the installed Macro app.' };
+  }
+  try {
+    const updater = getAutoUpdater();
+    updateDownloaded = false;
+    emit({ type: 'progress', percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 });
+    await updater.downloadUpdate();
+    updateDownloaded = true;
+    return {
+      ok: true,
+      version: lastUpdateInfo && lastUpdateInfo.version,
+      downloaded: true
+    };
+  } catch (err) {
+    return { ok: false, error: friendlyUpdaterError(err) };
+  }
+}
+
+/**
+ * Quit and apply the downloaded update.
+ * @returns {{ ok: boolean, error?: string }}
+ */
+function installUpdate() {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates only work in the installed Macro app.' };
+  }
+  if (!updateDownloaded) {
+    return { ok: false, error: 'Download the update first.' };
+  }
+  try {
+    // isSilent=false, isForceRunAfter=true — relaunch Macro after install
+    getAutoUpdater().quitAndInstall(false, true);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyUpdaterError(err) };
+  }
+}
+
 module.exports = {
-  GITHUB_OWNER,
-  GITHUB_REPO,
-  RELEASES_PAGE,
+  initAppUpdater,
   checkForUpdates,
-  compareVersions,
-  parseVersion
+  downloadUpdate,
+  installUpdate,
+  isNewerVersion
 };

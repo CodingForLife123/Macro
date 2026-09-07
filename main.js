@@ -22,7 +22,7 @@ const {
   initNotificationHost,
   disposeNotificationHost
 } = require('./src/notificationHost');
-const { checkForUpdates, RELEASES_PAGE } = require('./src/updater');
+const { checkForUpdates, downloadUpdate, installUpdate, initAppUpdater } = require('./src/updater');
 
 app.commandLine.appendSwitch('disable-http-cache');
 
@@ -427,11 +427,17 @@ async function runUpdateCheck(options = {}) {
   if (result.updateAvailable && options.notify) {
     showDesktopNotification(
       'Update available',
-      `Macro ${result.latestVersion} is ready (you have ${result.currentVersion}). Open the Updates tab and press Update.`,
+      `Macro ${result.latestVersion} is ready (you have ${result.currentVersion}). Open Updates and press Update.`,
       'info'
     );
   }
   return result;
+}
+
+function sendUpdateEvent(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updates:event', payload);
+  }
 }
 
 ipcMain.handle('macro:get-hotkeys', async () => {
@@ -506,13 +512,27 @@ ipcMain.handle('preferences:save', async (_event, payload) => {
 
 ipcMain.handle('updates:get-version', async () => ({
   version: app.getVersion(),
-  releasesPage: RELEASES_PAGE
+  packaged: app.isPackaged
 }));
 
 ipcMain.handle('updates:check', async () => runUpdateCheck({ notify: false }));
 
-ipcMain.handle('updates:open-download', async (_event, url) => {
-  const target = String(url || RELEASES_PAGE).trim() || RELEASES_PAGE;
+ipcMain.handle('updates:download', async () => downloadUpdate());
+
+ipcMain.handle('updates:install', async () => {
+  if (engine) {
+    try {
+      engine.stop('OFF');
+    } catch {
+      // ignore
+    }
+  }
+  return installUpdate();
+});
+
+ipcMain.handle('app:open-external', async (_event, url) => {
+  const target = String(url || '').trim();
+  if (!target) return { ok: false, error: 'Missing URL' };
   try {
     await shell.openExternal(target);
     return { ok: true };
@@ -761,6 +781,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     setNotificationsEnabledGetter(() => readPreferences().notificationsEnabled);
     initNotificationHost(() => readAppearance());
+    initAppUpdater(sendUpdateEvent);
     createWindow();
     if (buildStatus().ready) {
       // Watchers start after UI signals setup done, or immediately if already past setup
