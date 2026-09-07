@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Macro | v0.0.1</title>
+  <title>Macro</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -52,7 +52,7 @@
             <h1>Macro</h1>
             <p>Electron rebuild by @CodingForLife123 · based on OpenMacro XTernal</p>
           </div>
-          <span class="brand-version">v0.0.1</span>
+          <span class="brand-version" id="app-version-badge">…</span>
         </div>
 
         <div class="scroll-container">
@@ -1611,12 +1611,21 @@
         }
       }
 
+      function applyAppVersionLabel(version) {
+        const v = String(version || '').replace(/^v/i, '').trim();
+        if (!v) return;
+        document.title = 'Macro | v' + v;
+        const badge = document.getElementById('app-version-badge');
+        if (badge) badge.textContent = 'v' + v;
+        const currentEl = document.getElementById('updates-current-version');
+        if (currentEl) currentEl.textContent = 'Version ' + v;
+      }
+
       async function initUpdatesPanel() {
         if (!window.updates) return;
         try {
           const info = await window.updates.getVersion();
-          const currentEl = document.getElementById('updates-current-version');
-          if (currentEl) currentEl.textContent = 'Version ' + (info.version || '…');
+          applyAppVersionLabel(info && info.version);
         } catch {
           // ignore
         }

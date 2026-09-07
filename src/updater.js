@@ -213,8 +213,9 @@ function installUpdate() {
     return { ok: false, error: 'Download the update first.' };
   }
   try {
-    // isSilent=false, isForceRunAfter=true — relaunch Macro after install
-    getAutoUpdater().quitAndInstall(false, true);
+    // isSilent=true — apply NSIS update without showing the Setup wizard UI
+    // isForceRunAfter=true — relaunch Macro when the silent install finishes
+    getAutoUpdater().quitAndInstall(true, true);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: friendlyUpdaterError(err) };

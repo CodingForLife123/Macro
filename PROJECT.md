@@ -37,6 +37,20 @@ Users install **Macro Setup** once (NSIS). Then:
 No GitHub UI, no ZIP extract for end users.
 
 ### Publish a release (you)
+**Recommended:** from the project folder run:
+
+```powershell
+npm run release
+```
+
+It bumps the version (asks, default = next patch), asks for your `GH_TOKEN` (or uses `$env:GH_TOKEN` if already set), then commit → push → tag → publish Setup, and repairs missing release assets when needed.
+
+Shortcuts:
+- `npm run release:auto` — auto patch bump + default commit message (still prompts for token unless set)
+- `npm run update` — alias of `npm run release`
+- `release.bat` — double-click wrapper that runs the same npm script
+
+**Manual way:**
 1. Bump `package.json` version  
 2. Create a GitHub Personal Access Token with `repo` scope  
 3. In PowerShell:
@@ -44,7 +58,7 @@ No GitHub UI, no ZIP extract for end users.
 $env:GH_TOKEN = "your_token"
 npm run publish
 ```
-That uploads `Macro-Setup-x.y.z.exe`, `latest.yml`, and blockmap to GitHub Releases.
+Never paste a real token into `PROJECT.md` or any tracked file. That uploads `Macro-Setup-x.y.z.exe`, `latest.yml`, and blockmap to GitHub Releases.
 
 Old ZIP releases do **not** support in-app update. Users must install from the Setup exe once.
 
