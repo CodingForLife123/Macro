@@ -101,10 +101,7 @@
             <div class="cast-head">
               <div class="cast-title-row">
                 <h3 id="cast-power-title">Cast power</h3>
-                <div class="cast-power-badge" aria-live="polite">
-                  <span id="cast-power-label">96</span><span class="cast-power-unit">%</span>
-                </div>
-                <button type="button" class="help-btn" data-help="Cast power" data-desc="Drag between Super quick (~28% power, faster short casts) and Perfect (~96% power, max distance).">?</button>
+                <button type="button" class="help-btn" data-help="Cast power" data-desc="Drag between Super quick (~5% power, very short fast casts) and Perfect (100% power, max distance).">?</button>
               </div>
               <p id="cast-power-copy">Hold until the power bar reaches your target. Higher = longer cast, lower = faster casts.</p>
             </div>
@@ -114,14 +111,14 @@
                 type="range"
                 id="cast-power"
                 class="cast-slider"
-                min="28"
-                max="96"
-                value="96"
+                min="5"
+                max="100"
+                value="100"
                 step="1"
                 aria-labelledby="cast-power-title"
-                aria-valuemin="28"
-                aria-valuemax="96"
-                aria-valuenow="96"
+                aria-valuemin="5"
+                aria-valuemax="100"
+                aria-valuenow="100"
               >
               <span class="cast-end-label" id="cast-label-perfect">Perfect</span>
             </div>
@@ -1007,9 +1004,9 @@
           cast_mode: 'custom',
           cast_power_custom: (() => {
             const el = document.getElementById('cast-power');
-            const n = el ? Number(el.value) : 96;
-            if (!Number.isFinite(n)) return 96;
-            return Math.min(96, Math.max(28, Math.round(n)));
+            const n = el ? Number(el.value) : 100;
+            if (!Number.isFinite(n)) return 100;
+            return Math.min(100, Math.max(5, Math.round(n)));
           })(),
           cast_timeout_ms: 15000,
           post_cast_delay_ms: 150,
@@ -1049,7 +1046,13 @@
 
         if (rodEl) rodEl.textContent = status.rod || (status.attached ? 'Attached' : 'Waiting for Roblox…');
         if (statusEl) statusEl.textContent = status.phase || 'OFF';
-        if (powerEl) powerEl.textContent = status.power || '---';
+        if (powerEl) {
+          if (status.power && status.power !== '---' && status.castTarget != null) {
+            powerEl.textContent = status.power + ' → ' + status.castTarget + '%';
+          } else {
+            powerEl.textContent = status.power || '---';
+          }
+        }
         if (progressEl) progressEl.textContent = status.progress || '---';
         if (caughtEl) caughtEl.textContent = String(status.caught ?? 0);
         if (lostEl) lostEl.textContent = String(status.lost ?? 0);
@@ -1085,12 +1088,11 @@
         });
 
         const castPowerSlider = document.getElementById('cast-power');
-        const castPowerLabel = document.getElementById('cast-power-label');
         const castPowerCopy = document.getElementById('cast-power-copy');
 
         function castPowerDescription(value) {
-          if (value <= 36) {
-            return 'Super quick cast — releases very early for the fastest cycle and shortest distance.';
+          if (value <= 15) {
+            return 'Super quick cast — releases almost immediately for the fastest cycle and shortest distance.';
           }
           if (value >= 88) {
             return 'Perfect cast — holds until the power bar is nearly full for max distance.';
@@ -1099,12 +1101,12 @@
         }
 
         function syncCastPowerUi(value) {
-          const v = Math.min(96, Math.max(28, Math.round(Number(value) || 96)));
+          const v = Math.min(100, Math.max(5, Math.round(Number(value) || 100)));
           if (castPowerSlider) {
             castPowerSlider.value = String(v);
             castPowerSlider.setAttribute('aria-valuenow', String(v));
+            castPowerSlider.setAttribute('aria-valuetext', v + ' percent');
           }
-          if (castPowerLabel) castPowerLabel.textContent = String(v);
           if (castPowerCopy) castPowerCopy.textContent = castPowerDescription(v);
           return v;
         }
@@ -1530,18 +1532,20 @@
               prefs.castPower != null
                 ? prefs.castPower
                 : prefs.perfectCastEnabled === false
-                  ? 28
-                  : 96;
-            const v = Math.min(96, Math.max(28, Math.round(Number(migrated) || 96)));
+                  ? 5
+                  : 100;
+            // Treat legacy perfect (96) as full power
+            const raw = Number(migrated);
+            const normalized = raw === 96 ? 100 : raw;
+            const v = Math.min(100, Math.max(5, Math.round(Number.isFinite(normalized) ? normalized : 100)));
             castPowerSlider.value = String(v);
             castPowerSlider.setAttribute('aria-valuenow', String(v));
-            const castPowerLabel = document.getElementById('cast-power-label');
+            castPowerSlider.setAttribute('aria-valuetext', v + ' percent');
             const castPowerCopy = document.getElementById('cast-power-copy');
-            if (castPowerLabel) castPowerLabel.textContent = String(v);
             if (castPowerCopy) {
-              if (v <= 36) {
+              if (v <= 15) {
                 castPowerCopy.textContent =
-                  'Super quick cast — releases very early for the fastest cycle and shortest distance.';
+                  'Super quick cast — releases almost immediately for the fastest cycle and shortest distance.';
               } else if (v >= 88) {
                 castPowerCopy.textContent =
                   'Perfect cast — holds until the power bar is nearly full for max distance.';

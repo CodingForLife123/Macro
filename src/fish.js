@@ -34,7 +34,7 @@ function defaultSettings() {
     derivative_gain: 0.18,
     edge_boundary: 0.08,
     cast_mode: 'full',
-    cast_power_custom: 96,
+    cast_power_custom: 100,
     cast_timeout_ms: 15000,
     pre_cast_delay_ms: 0,
     post_cast_delay_ms: 150,
@@ -70,7 +70,7 @@ class FishingMacro {
       isHoldingRight: false,
       lastActionAt: 0,
       lastRightActionAt: 0,
-      castThreshold: 96,
+      castThreshold: 100,
       castWaitTimeoutMs: 15000,
       fishingEndGraceMs: 100,
       castStartedAt: 0,
@@ -117,10 +117,12 @@ class FishingMacro {
     switch (this.settings.cast_mode) {
       case 'short':
         return 28;
-      case 'custom':
-        return clamp(Number(this.settings.cast_power_custom) || 96, 1, 100);
+      case 'custom': {
+        const n = Number(this.settings.cast_power_custom);
+        return clamp(Number.isFinite(n) ? n : 100, 1, 100);
+      }
       default:
-        return 96;
+        return 100;
     }
   }
 
@@ -627,6 +629,8 @@ class FishingMacro {
     }
 
     this.state.castBarSeen = true;
+    // Re-read threshold every tick so slider changes apply mid-cast
+    this.state.castThreshold = this.resolveCastThreshold();
     const percent = this.readPowerBarPercent(resolved.bar);
     this.state.powerPercent = percent.toFixed(1);
 
@@ -998,6 +1002,7 @@ class FishingMacro {
       appraiseStatus: this.appraise.statusMessage,
       cycleEnabled: this.state.cycleEnabled,
       power: this.state.powerPercent === '' ? '---' : this.state.powerPercent + '%',
+      castTarget: Math.round(Number(this.state.castThreshold) || this.resolveCastThreshold()),
       progress: this.state.progressPercent === '' ? '---' : this.state.progressPercent + '%',
       rod,
       rodKind: resolveRodKind(rod),

@@ -187,12 +187,12 @@ function appearanceBackgroundColor(hex) {
 
 const DEFAULT_PREFERENCES = {
   notificationsEnabled: true,
-  castPower: 96,
+  castPower: 100,
   autoFixOffsets: true
 };
 
-const CAST_POWER_MIN = 28;
-const CAST_POWER_MAX = 96;
+const CAST_POWER_MIN = 5;
+const CAST_POWER_MAX = 100;
 
 function clampCastPower(value, fallback = CAST_POWER_MAX) {
   const n = Number(value);
@@ -207,9 +207,11 @@ function preferencesPath() {
 function readPreferences() {
   try {
     const raw = JSON.parse(fs.readFileSync(preferencesPath(), 'utf8'));
-    const castPower = Object.prototype.hasOwnProperty.call(raw, 'castPower')
+    const castPowerRaw = Object.prototype.hasOwnProperty.call(raw, 'castPower')
       ? clampCastPower(raw.castPower)
       : clampCastPower(raw.perfectCastEnabled === false ? CAST_POWER_MIN : CAST_POWER_MAX);
+    // Legacy perfect cast was 96 — treat as full power
+    const castPower = castPowerRaw === 96 ? CAST_POWER_MAX : castPowerRaw;
     return {
       notificationsEnabled: raw.notificationsEnabled !== false,
       castPower,
@@ -319,7 +321,10 @@ function readUiSettingsFromPayload(payload) {
     derivative_gain: Number(payload.derivative_gain) || defaults.derivative_gain,
     edge_boundary: Number(payload.edge_boundary) || defaults.edge_boundary,
     cast_mode: payload.cast_mode || defaults.cast_mode,
-    cast_power_custom: Number(payload.cast_power_custom) || defaults.cast_power_custom,
+    cast_power_custom: (() => {
+      const n = Number(payload.cast_power_custom);
+      return Number.isFinite(n) ? n : defaults.cast_power_custom;
+    })(),
     cast_timeout_ms: Number(payload.cast_timeout_ms) || defaults.cast_timeout_ms,
     post_cast_delay_ms: Number(payload.post_cast_delay_ms) || defaults.post_cast_delay_ms,
     cast_on_timeout: payload.cast_on_timeout !== false,
@@ -388,11 +393,24 @@ function registerMacroHotkeys() {
   const actions = {
     start_macro: () => {
       if (!ensureMacroAllowed().ok) return;
-      getEngine().toggle();
+      const eng = getEngine();
+      // Hotkey start bypasses the renderer — always refresh cast from saved prefs
+      const prefs = readPreferences();
+      eng.setSettings({
+        cast_mode: 'custom',
+        cast_power_custom: prefs.castPower
+      });
+      eng.toggle();
     },
     start_appraise: () => {
       if (!ensureMacroAllowed().ok) return;
-      getEngine().toggleAppraise();
+      const eng = getEngine();
+      const prefs = readPreferences();
+      eng.setSettings({
+        cast_mode: 'custom',
+        cast_power_custom: prefs.castPower
+      });
+      eng.toggleAppraise();
     },
     fix_roblox: () => {
       if (!ensureMacroAllowed().ok) return;
