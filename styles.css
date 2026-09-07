@@ -37,6 +37,7 @@
   --inset-bottom: 16px;
 
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233d5248' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  --select-chevron-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233d5248' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 15 12 9 18 15'/%3E%3C/svg%3E");
 
   --toggle-track-off: #c8d5cd;
   --toggle-knob: #ffffff;
@@ -428,20 +429,43 @@ select {
 }
 
 input[type="text"]:hover,
-input[type="number"]:hover,
-.select:hover,
-select:hover {
+input[type="number"]:hover {
   border-color: var(--border-strong);
   background: var(--surface);
 }
 
-input:focus-visible,
-.select:focus-visible,
-select:focus-visible {
+.select:hover,
+select:hover {
+  border-color: var(--border-strong);
+  /* Use background-color only — `background` shorthand wipes the chevron image */
+  background-color: var(--surface);
+  background-image: var(--select-chevron);
+}
+
+input:focus-visible {
   outline: none;
   border-color: var(--primary);
   background: var(--surface);
   box-shadow: 0 0 0 3px var(--primary-muted);
+}
+
+.select:focus,
+select:focus,
+.select:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  background-color: var(--surface);
+  background-image: var(--select-chevron);
+  box-shadow: 0 0 0 3px var(--primary-muted);
+}
+
+/* Point chevron up only while the menu is open */
+.select:open,
+select:open,
+.select.is-open,
+select.is-open {
+  background-image: var(--select-chevron-up);
 }
 
 input[readonly] {
@@ -449,7 +473,7 @@ input[readonly] {
   background: var(--surface-hi);
 }
 
-/* Custom dropdown look */
+/* Custom dropdown look — trigger */
 .select,
 select {
   appearance: none;
@@ -471,7 +495,8 @@ select {
 }
 
 .select-wrap .select,
-.select-wrap select {
+.select-wrap select,
+.select-wrap .custom-select {
   flex: 1;
   min-width: 0;
 }
@@ -487,16 +512,172 @@ select {
   line-height: 1;
 }
 
-select option,
-select optgroup {
+/* Uniform custom menu (replaces native OS popup) */
+.custom-select {
+  position: relative;
+  width: 100%;
+}
+
+.custom-select-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  background: none !important;
+}
+
+.custom-select-trigger {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  padding: 0 34px 0 10px;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background-color: var(--surface-hi);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
+}
+
+.custom-select-trigger::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 14px;
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+
+.custom-select-trigger:hover {
+  border-color: var(--border-strong);
   background-color: var(--surface);
+}
+
+.custom-select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-muted);
+}
+
+.custom-select.is-open .custom-select-trigger {
+  border-color: var(--primary);
+  background-color: var(--surface);
+  box-shadow: 0 0 0 3px var(--primary-muted);
+}
+
+.custom-select.is-open .custom-select-trigger::after {
+  transform: rotate(180deg);
+}
+
+.custom-select-menu {
+  position: fixed;
+  z-index: 80;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(280px, 50vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--surface);
+  /* 1px (not 1.5) — fractional borders leave gaps at rounded corners in Chromium */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  background-clip: padding-box;
+}
+
+.custom-select-menu.is-open {
+  display: flex;
+}
+
+.custom-select-menu[hidden] {
+  display: none !important;
+}
+
+.custom-select-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-select-menu::-webkit-scrollbar-track {
+  margin: 4px 0;
+  background: transparent;
+}
+
+.custom-select-menu::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-select-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-select-menu::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.custom-select-option {
+  box-sizing: border-box;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-select-option:hover,
+.custom-select-option:focus-visible {
+  outline: none;
+  background: var(--primary-muted);
   color: var(--text);
 }
 
-select option:checked,
-select option:hover {
-  background-color: var(--primary);
-  color: #fff;
+.custom-select-option.is-selected {
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.custom-select-option.is-selected:hover {
+  background: var(--primary-muted);
+  color: var(--primary-hover);
 }
 
 /* Buttons */

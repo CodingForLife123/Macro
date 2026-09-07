@@ -1133,6 +1133,7 @@
               mutation.appendChild(opt);
             }
             mutation.value = s.auto_appraise_mutation;
+            if (mutation._customSelect) mutation._customSelect.sync();
           }
           if (delay) delay.value = String(s.appraise_delay_ms || 500);
           if (clickX) clickX.value = s.auto_appraise_click_x === '' || s.auto_appraise_click_x == null ? '' : String(s.auto_appraise_click_x);
@@ -1191,6 +1192,7 @@
             (o) => o.value.toLowerCase() === name.toLowerCase() || o.textContent.toLowerCase() === name.toLowerCase()
           );
           if (match) select.value = match.value;
+          if (select._customSelect) select._customSelect.sync();
           showToast('Mutation already in the list');
           pushAppraiseSettings();
           closeMutationPrompt();
@@ -1202,6 +1204,7 @@
         opt.textContent = name;
         select.appendChild(opt);
         select.value = name;
+        if (select._customSelect) select._customSelect.rebuild();
         showToast('Added mutation: ' + name);
         pushAppraiseSettings();
         closeMutationPrompt();
@@ -1353,10 +1356,10 @@
         root.style.colorScheme = isDark ? 'dark' : 'light';
 
         const chevronStroke = textMuted.replace('#', '');
-        root.style.setProperty(
-          '--select-chevron',
-          `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23${chevronStroke}' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`
-        );
+        const chevronDown = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23${chevronStroke}' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`;
+        const chevronUp = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23${chevronStroke}' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 15 12 9 18 15'/%3E%3C/svg%3E")`;
+        root.style.setProperty('--select-chevron', chevronDown);
+        root.style.setProperty('--select-chevron-up', chevronUp);
 
         return { accent, bg, text, border };
       }
@@ -1389,7 +1392,10 @@
           const saved = await window.appearance.get();
           if (!saved) return;
           const themeSelect = document.getElementById('theme-select');
-          if (themeSelect && saved.theme) themeSelect.value = saved.theme;
+          if (themeSelect && saved.theme) {
+            themeSelect.value = saved.theme;
+            if (themeSelect._customSelect) themeSelect._customSelect.sync();
+          }
           fillThemeInputs(saved);
           applyThemeToDocument(saved);
         } catch {
@@ -1443,7 +1449,10 @@
           input.value = hex.toUpperCase();
           if (hex.length === 6) swatch.style.background = '#' + hex;
           const themeSelect = document.getElementById('theme-select');
-          if (themeSelect) themeSelect.value = 'Custom';
+          if (themeSelect) {
+            themeSelect.value = 'Custom';
+            if (themeSelect._customSelect) themeSelect._customSelect.sync();
+          }
         });
       });
 
@@ -1700,6 +1709,177 @@
       }
 
       initUpdatesPanel();
+
+      function closeAllCustomSelects(exceptRoot) {
+        document.querySelectorAll('.custom-select.is-open').forEach((root) => {
+          if (exceptRoot && root === exceptRoot) return;
+          root.classList.remove('is-open');
+          const trigger = root.querySelector('.custom-select-trigger');
+          const menuId = root.dataset.menuId;
+          const menu = menuId ? document.getElementById(menuId) : null;
+          if (trigger) trigger.setAttribute('aria-expanded', 'false');
+          if (menu) {
+            menu.hidden = true;
+            menu.classList.remove('is-open');
+          }
+        });
+      }
+
+      function enhanceCustomSelect(select) {
+        if (!select || select.dataset.customized === '1') return;
+        select.dataset.customized = '1';
+
+        const root = document.createElement('div');
+        root.className = 'custom-select';
+        select.parentNode.insertBefore(root, select);
+        root.appendChild(select);
+        select.classList.add('custom-select-native');
+        select.tabIndex = -1;
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'custom-select-trigger';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        if (select.id) trigger.id = select.id + '-trigger';
+        if (select.getAttribute('aria-label')) {
+          trigger.setAttribute('aria-label', select.getAttribute('aria-label'));
+        }
+
+        const menu = document.createElement('ul');
+        menu.className = 'custom-select-menu';
+        menu.setAttribute('role', 'listbox');
+        menu.id = (select.id || ('select-' + Math.random().toString(36).slice(2, 8))) + '-menu';
+        menu.hidden = true;
+        root.dataset.menuId = menu.id;
+
+        root.appendChild(trigger);
+        document.body.appendChild(menu);
+
+        function syncTrigger() {
+          const selected = select.options[select.selectedIndex];
+          trigger.textContent = selected ? selected.textContent : '';
+          menu.querySelectorAll('.custom-select-option').forEach((li) => {
+            const on = li.dataset.value === select.value;
+            li.classList.toggle('is-selected', on);
+            li.setAttribute('aria-selected', on ? 'true' : 'false');
+          });
+        }
+
+        function rebuildMenu() {
+          menu.innerHTML = '';
+          [...select.options].forEach((opt) => {
+            const li = document.createElement('li');
+            li.className = 'custom-select-option';
+            li.setAttribute('role', 'option');
+            li.dataset.value = opt.value;
+            li.textContent = opt.textContent;
+            li.tabIndex = -1;
+            if (opt.disabled) {
+              li.setAttribute('aria-disabled', 'true');
+              li.style.opacity = '0.45';
+              li.style.pointerEvents = 'none';
+            }
+            li.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (opt.disabled) return;
+              select.value = opt.value;
+              select.dispatchEvent(new Event('change', { bubbles: true }));
+              syncTrigger();
+              closeMenu();
+            });
+            menu.appendChild(li);
+          });
+          syncTrigger();
+        }
+
+        function positionMenu() {
+          const rect = trigger.getBoundingClientRect();
+          const width = Math.round(rect.width);
+          const menuHeight = Math.min(280, window.innerHeight * 0.5);
+          const spaceBelow = window.innerHeight - rect.bottom - 8;
+          const openUp = spaceBelow < 160 && rect.top > spaceBelow;
+
+          menu.style.left = Math.round(rect.left) + 'px';
+          menu.style.width = width + 'px';
+          menu.style.minWidth = width + 'px';
+          menu.style.maxWidth = width + 'px';
+          menu.style.maxHeight = menuHeight + 'px';
+
+          if (openUp) {
+            menu.style.top = 'auto';
+            menu.style.bottom = Math.max(8, Math.round(window.innerHeight - rect.top + 4)) + 'px';
+          } else {
+            menu.style.bottom = 'auto';
+            menu.style.top = Math.round(rect.bottom + 4) + 'px';
+          }
+        }
+
+        function openMenu() {
+          closeAllCustomSelects(root);
+          rebuildMenu();
+          root.classList.add('is-open');
+          menu.classList.add('is-open');
+          trigger.setAttribute('aria-expanded', 'true');
+          menu.hidden = false;
+          positionMenu();
+          requestAnimationFrame(positionMenu);
+          const selected = menu.querySelector('.custom-select-option.is-selected');
+          if (selected) selected.scrollIntoView({ block: 'nearest' });
+        }
+
+        function closeMenu() {
+          root.classList.remove('is-open');
+          menu.classList.remove('is-open');
+          trigger.setAttribute('aria-expanded', 'false');
+          menu.hidden = true;
+        }
+
+        trigger.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const shouldOpen = !root.classList.contains('is-open');
+          closeAllCustomSelects();
+          closeMenu();
+          if (shouldOpen) openMenu();
+        });
+
+        trigger.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!root.classList.contains('is-open')) openMenu();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeMenu();
+          }
+        });
+
+        select.addEventListener('change', syncTrigger);
+
+        const observer = new MutationObserver(() => rebuildMenu());
+        observer.observe(select, { childList: true, subtree: true, characterData: true });
+
+        rebuildMenu();
+        select._customSelect = { rebuild: rebuildMenu, sync: syncTrigger, open: openMenu, close: closeMenu };
+      }
+
+      document.querySelectorAll('select.select').forEach(enhanceCustomSelect);
+
+      document.addEventListener('pointerdown', (e) => {
+        const t = e.target;
+        if (t && t.closest && (t.closest('.custom-select-trigger') || t.closest('.custom-select-menu'))) {
+          return;
+        }
+        closeAllCustomSelects();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeAllCustomSelects();
+      });
+      window.addEventListener('resize', () => closeAllCustomSelects());
+      document.querySelectorAll('.panel-scroll, .scroll-container').forEach((scroller) => {
+        scroller.addEventListener('scroll', () => closeAllCustomSelects(), { passive: true });
+      });
 
       document.querySelectorAll('[data-open-url]').forEach((btn) => {
         btn.addEventListener('click', async () => {
