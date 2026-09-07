@@ -12,11 +12,16 @@
   },
   "keywords": [],
   "author": {
-    "name": "Jhon Loyd Nacional",
-    "url": "https://github.com"
+    "name": "CodingForLife123",
+    "url": "https://github.com/CodingForLife123"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CodingForLife123/Macro.git"
+  },
+  "homepage": "https://github.com/CodingForLife123/Macro",
   "license": "AGPL-3.0-only",
-  "description": "External Fisch macro (Electron rebuild of OpenMacro XTernal)",
+  "description": "External Fisch macro (Electron rebuild of OpenMacro XTernal by @anorexc)",
   "dependencies": {
     "koffi": "^2.11.0"
   },
@@ -25,9 +30,9 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.jhonloydnacional.macro",
+    "appId": "com.codingforlife123.macro",
     "productName": "Macro",
-    "copyright": "Copyright © 2026 Jhon Loyd Nacional",
+    "copyright": "Copyright © 2026 CodingForLife123",
     "directories": {
       "output": "dist"
     },

@@ -6,10 +6,13 @@ This Electron rebuild includes logic and data adapted from:
   OpenMacro XTernal
   Copyright (c) 2026 OpenMacro XTernal (@anorexc)
   Licensed under the GNU Affero General Public License v3.0 only
-  https://www.gnu.org/licenses/agpl-3.0.txt
+  Source: https://github.com/termx3/OpenMacro-XTernal
+  License text: https://www.gnu.org/licenses/agpl-3.0.txt
 
 Derivative work in this repository:
-  Copyright (c) 2026 Jhon Loyd Nacional
+  Copyright (c) 2026 @CodingForLife123
+  Electron rebuild ("Macro")
+  https://github.com/CodingForLife123/Macro
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License as published by the Free

@@ -7,7 +7,7 @@
 
 Clone **OpenMacro XTernal** — an external memory-based macro for the Roblox game **Fisch**.
 
-This repo (`d:\macro`) is the Electron rebuild. Creator: **Jhon Loyd Nacional**.
+This repo (`d:\macro`) is the Electron rebuild. Creator: **@CodingForLife123**.
 
 ## Reference Source
 
@@ -16,13 +16,24 @@ This repo (`d:\macro`) is the Electron rebuild. Creator: **Jhon Loyd Nacional**.
 D:\Downloads\OpenMacro-XTernal-0.2.51\OpenMacro-XTernal-0.2.51\OpenMacro-XTernal-0.2.51
 ```
 
-**Original app:** OpenMacro XTernal (AutoHotkey v2)  
-**License:** GNU AGPL-3.0-only — derivatives must comply with AGPL. See `LICENSE` + `NOTICE`.
+**Original app:** OpenMacro XTernal (AutoHotkey v2) by @anorexc  
+**Original repo:** https://github.com/termx3/OpenMacro-XTernal  
+**License:** GNU AGPL-3.0-only — derivatives must comply with AGPL. See `LICENSE` + `NOTICE`.  
+**UI credits:** About tab must credit OpenMacro XTernal (@anorexc) and link the original repo.
 
 ## Launch flow
 
 1. **Requirements setup** — install & verify packages (blocked until ready)  
 2. Macro UI unlocks  
+
+## App updates (GitHub Releases)
+
+Manual only (Updates tab):
+1. User clicks **Check for updates**
+2. If newer, **Update** button appears — user must click it
+3. Browser opens the ZIP download; user extracts over their Macro folder
+
+Nothing installs or downloads on its own. Publishing: bump `package.json` version → `npm run dist:zip` → upload ZIP to a new GitHub Release tag (`vX.Y.Z`). Repo should be public so checks work.
 
 ## How to use the macro
 
@@ -71,7 +82,7 @@ The portable build is a self-extracting archive. Each launch unpacks ~90MB into 
 Ignore `dist/win-unpacked/` as a share target by itself unless you zip it.
 
 ### Windows “Company” property
-Explorer always labels that field **Company** (Windows fixed label). The value comes from `package.json` → `author` / `build.win.publisherName` (currently **Jhon Loyd Nacional**). You cannot rename the label to “Developer”.
+Explorer always labels that field **Company** (Windows fixed label). The value comes from `package.json` → `author` / `build.win.publisherName` (currently **CodingForLife123**). You cannot rename the label to “Developer”.
 
 Packaged builds skip the npm requirements gate because `koffi` is bundled.  
 
@@ -165,7 +176,7 @@ Also specially matched: Lullaby / Dreambreaker even if not in the known list.
 
 ## User Notes
 
-- Creator: **Jhon Loyd Nacional**  
+- Creator: **@CodingForLife123**  
 - Scope: XTernal-style Fisch macro  
 
 ---

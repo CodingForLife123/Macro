@@ -39,3 +39,9 @@ contextBridge.exposeInMainWorld('preferences', {
   get: () => ipcRenderer.invoke('preferences:get'),
   save: (payload) => ipcRenderer.invoke('preferences:save', payload)
 });
+
+contextBridge.exposeInMainWorld('updates', {
+  getVersion: () => ipcRenderer.invoke('updates:get-version'),
+  check: () => ipcRenderer.invoke('updates:check'),
+  openDownload: (url) => ipcRenderer.invoke('updates:open-download', url)
+});

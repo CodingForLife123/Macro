@@ -50,7 +50,7 @@
          
           <div class="brand-text">
             <h1>Macro</h1>
-            <p>Created by Jhon Loyd Nacional</p>
+            <p>Electron rebuild by @CodingForLife123 · based on OpenMacro XTernal</p>
           </div>
           <span class="brand-version">v0.0.1</span>
         </div>
@@ -329,33 +329,6 @@
         </div>
 
         <div class="section-header">
-          <h2>Updates</h2>
-          <button type="button" class="link" data-action="open-settings-folder">Open folder</button>
-        </div>
-        <div class="card">
-          <div class="toggle-row">
-            <label class="toggle">
-              <input type="checkbox" id="auto-update" checked>
-              <span class="toggle-track"></span>
-            </label>
-            <div class="toggle-text">
-              <h3>Automatic updates</h3>
-              <p>Install silently in the background.</p>
-            </div>
-          </div>
-          <div class="toggle-row" style="padding-top: 0;">
-            <label class="toggle">
-              <input type="checkbox" id="update-confirm" checked>
-              <span class="toggle-track"></span>
-            </label>
-            <div class="toggle-text">
-              <h3>Show update confirmation</h3>
-              <p>Success message after updates install.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-header">
           <h2>Hotkeys</h2>
         </div>
 
@@ -443,17 +416,30 @@
       <!-- ── UPDATES ── -->
       <section class="panel panel-scroll" id="panel-updates" role="tabpanel" aria-labelledby="tab-updates" aria-hidden="true">
         <div class="card card-accent version-card">
-          <h3>Version 0.0.1</h3>
-          <time datetime="2026-08-24">August 24, 2026</time>
+          <h3 id="updates-current-version">Version …</h3>
+          <p id="updates-status" class="updates-status">Press Check for updates when you want to look for a newer build.</p>
         </div>
-        <div class="changelog">
-          <p><strong>Initial UI</strong></p>
-          <ul>
-            <li>Desktop shell with Home, Appraise, Settings, Updates, and About tabs</li>
-            <li>Live status dashboard with session metrics</li>
-            <li>Adjustment controls with inline help tooltips</li>
-            <li>Config profile management UI</li>
-          </ul>
+
+        <div class="card" style="margin-top: 12px;">
+          <div class="field-group" style="margin-bottom: 12px;">
+            <strong id="updates-latest-label">Latest release</strong>
+            <p id="updates-latest-meta" style="margin: 6px 0 0; opacity: 0.8;">Not checked yet.</p>
+          </div>
+          <div class="config-actions" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button type="button" class="btn btn-secondary" id="updates-check-btn">Check for updates</button>
+            <button type="button" class="btn btn-primary" id="updates-download-btn" hidden>Update</button>
+            <button type="button" class="btn btn-secondary" id="updates-release-btn">Open releases page</button>
+          </div>
+          <p style="margin: 10px 0 0; font-size: 12px; opacity: 0.75;">
+            Updates never install by themselves. After you click <strong>Update</strong>, download the ZIP and extract it over your Macro folder.
+          </p>
+        </div>
+
+        <div class="section-header" style="margin-top: 16px;">
+          <h2>Release notes</h2>
+        </div>
+        <div class="changelog" id="updates-notes">
+          <p>Release notes appear here after you check for updates.</p>
         </div>
       </section>
 
@@ -468,22 +454,72 @@
             </div>
             <div>
               <h3>Macro</h3>
-              <p>External Fisch macro</p>
-              <p class="creator-credit">Created by <strong>Jhon Loyd Nacional</strong></p>
+              <p>External Fisch macro (Electron rebuild)</p>
+              <p class="creator-credit">Electron rebuild by <strong>@CodingForLife123</strong></p>
             </div>
           </div>
         </div>
 
         <div class="section-header">
-          <h2>About this project</h2>
+          <h2>Credits</h2>
         </div>
-        <p class="legal">
-          This project is a clone/rebuild of OpenMacro XTernal functionality using Electron.
-          Reference source is used for feature parity during development. The original XTernal
-          project is licensed under AGPL-3.0-only — any redistribution must comply with those terms.
-        </p>
+        <div class="card">
+          <h3 style="margin: 0 0 6px; font-size: 15px;">Original project</h3>
+          <p style="margin: 0 0 10px; opacity: 0.85;">
+            Based on <strong>OpenMacro XTernal</strong> by <strong>@anorexc</strong> (OpenMacro),
+            licensed under <strong>AGPL-3.0-only</strong>.
+          </p>
+          <div class="config-actions" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-open-url="https://github.com/termx3/OpenMacro-XTernal"
+            >
+              OpenMacro XTernal on GitHub
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-open-url="https://www.gnu.org/licenses/agpl-3.0.html"
+            >
+              AGPL-3.0 license
+            </button>
+          </div>
+        </div>
 
-        <p class="footer-note">Macro · Created by Jhon Loyd Nacional</p>
+        <div class="section-header">
+          <h2>This rebuild</h2>
+        </div>
+        <div class="card">
+          <p style="margin: 0 0 10px; opacity: 0.85;">
+            <strong>Macro</strong> is an Electron port/rebuild by <strong>@CodingForLife123</strong>.
+            Fishing logic and concepts were adapted from OpenMacro XTernal under AGPL-3.0.
+          </p>
+          <div class="config-actions" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-open-url="https://github.com/CodingForLife123"
+            >
+              @CodingForLife123 on GitHub
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-open-url="https://github.com/CodingForLife123/Macro"
+            >
+              This Macro repo
+            </button>
+          </div>
+          <p class="legal" style="margin: 0;">
+            See <code>LICENSE</code> and <code>NOTICE</code> in this project for full attribution.
+            Redistribution must remain AGPL-3.0-only and keep these credits.
+          </p>
+        </div>
+
+        <p class="footer-note">
+          Macro · @CodingForLife123 · based on OpenMacro XTernal (@anorexc)
+        </p>
       </section>
     </main>
   </div>
@@ -1471,6 +1507,141 @@
         });
       }
 
+      /** @type {{ downloadUrl?: string, releaseUrl?: string } | null} */
+      let lastUpdateInfo = null;
+
+      function renderUpdateResult(result) {
+        const statusEl = document.getElementById('updates-status');
+        const latestMeta = document.getElementById('updates-latest-meta');
+        const notesEl = document.getElementById('updates-notes');
+        const downloadBtn = document.getElementById('updates-download-btn');
+        const currentEl = document.getElementById('updates-current-version');
+
+        if (currentEl && result.currentVersion) {
+          currentEl.textContent = 'Version ' + result.currentVersion;
+        }
+
+        if (!result.ok) {
+          if (statusEl) statusEl.textContent = result.error || 'Could not check for updates.';
+          if (latestMeta) latestMeta.textContent = 'Check failed.';
+          if (downloadBtn) downloadBtn.hidden = true;
+          lastUpdateInfo = { releaseUrl: result.releaseUrl };
+          return;
+        }
+
+        lastUpdateInfo = {
+          downloadUrl: result.downloadUrl,
+          releaseUrl: result.releaseUrl
+        };
+
+        if (result.updateAvailable) {
+          if (statusEl) {
+            statusEl.textContent =
+              'Update available: v' + result.latestVersion + ' (you have v' + result.currentVersion + ').';
+          }
+          if (latestMeta) {
+            latestMeta.textContent =
+              (result.releaseName || 'Macro v' + result.latestVersion) +
+              (result.assetName ? ' · ' + result.assetName : '');
+          }
+          if (downloadBtn) downloadBtn.hidden = false;
+        } else {
+          if (statusEl) statusEl.textContent = 'You are on the latest version.';
+          if (latestMeta) {
+            latestMeta.textContent =
+              (result.releaseName || 'Macro v' + result.latestVersion) + ' · up to date';
+          }
+          if (downloadBtn) downloadBtn.hidden = true;
+        }
+
+        if (notesEl) {
+          const notes = String(result.releaseNotes || '').trim();
+          if (notes) {
+            notesEl.innerHTML = '';
+            const pre = document.createElement('pre');
+            pre.style.whiteSpace = 'pre-wrap';
+            pre.style.margin = '0';
+            pre.style.fontFamily = 'inherit';
+            pre.textContent = notes;
+            notesEl.appendChild(pre);
+          } else {
+            notesEl.innerHTML = '<p>No release notes for this version.</p>';
+          }
+        }
+      }
+
+      async function initUpdatesPanel() {
+        if (!window.updates) return;
+        try {
+          const info = await window.updates.getVersion();
+          const currentEl = document.getElementById('updates-current-version');
+          if (currentEl) currentEl.textContent = 'Version ' + (info.version || '…');
+          lastUpdateInfo = { releaseUrl: info.releasesPage };
+        } catch {
+          // ignore
+        }
+
+        const checkBtn = document.getElementById('updates-check-btn');
+        if (checkBtn) {
+          checkBtn.addEventListener('click', async () => {
+            checkBtn.disabled = true;
+            const statusEl = document.getElementById('updates-status');
+            if (statusEl) statusEl.textContent = 'Checking GitHub Releases…';
+            try {
+              const result = await window.updates.check();
+              renderUpdateResult(result);
+              if (result.ok && result.updateAvailable) {
+                showToast('Update available: v' + result.latestVersion);
+              } else if (result.ok) {
+                showToast('You are up to date.');
+              } else {
+                showToast(result.error || 'Update check failed.');
+              }
+            } catch (err) {
+              if (statusEl) statusEl.textContent = err.message || 'Update check failed.';
+              showToast('Update check failed.');
+            } finally {
+              checkBtn.disabled = false;
+            }
+          });
+        }
+
+        const downloadBtn = document.getElementById('updates-download-btn');
+        if (downloadBtn) {
+          downloadBtn.addEventListener('click', async () => {
+            const url = lastUpdateInfo && (lastUpdateInfo.downloadUrl || lastUpdateInfo.releaseUrl);
+            if (!url || !window.updates.openDownload) return;
+            await window.updates.openDownload(url);
+            showToast('Update download opened. Extract the ZIP over your Macro folder, then restart.');
+          });
+        }
+
+        const releaseBtn = document.getElementById('updates-release-btn');
+        if (releaseBtn) {
+          releaseBtn.addEventListener('click', async () => {
+            const url =
+              (lastUpdateInfo && lastUpdateInfo.releaseUrl) ||
+              'https://github.com/CodingForLife123/Macro/releases/latest';
+            if (window.updates && window.updates.openDownload) {
+              await window.updates.openDownload(url);
+            }
+          });
+        }
+      }
+
+      initUpdatesPanel();
+
+      document.querySelectorAll('[data-open-url]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const url = btn.getAttribute('data-open-url');
+          if (!url) return;
+          if (window.updates && window.updates.openDownload) {
+            await window.updates.openDownload(url);
+          }
+        });
+      });
+
+      loadSavedPreferences();
       loadSavedAppearance();
     })();
   </script>

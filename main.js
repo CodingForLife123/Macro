@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22,6 +22,7 @@ const {
   initNotificationHost,
   disposeNotificationHost
 } = require('./src/notificationHost');
+const { checkForUpdates, RELEASES_PAGE } = require('./src/updater');
 
 app.commandLine.appendSwitch('disable-http-cache');
 
@@ -416,6 +417,23 @@ function unlockMacroRuntime() {
   }
 }
 
+/**
+ * @param {{ notify?: boolean }} [options]
+ */
+async function runUpdateCheck(options = {}) {
+  const result = await checkForUpdates();
+  if (!result.ok) return result;
+
+  if (result.updateAvailable && options.notify) {
+    showDesktopNotification(
+      'Update available',
+      `Macro ${result.latestVersion} is ready (you have ${result.currentVersion}). Open the Updates tab and press Update.`,
+      'info'
+    );
+  }
+  return result;
+}
+
 ipcMain.handle('macro:get-hotkeys', async () => {
   const hotkeys = readHotkeys();
   return {
@@ -484,6 +502,23 @@ ipcMain.handle('preferences:save', async (_event, payload) => {
     }
   }
   return { ok: true, preferences: saved };
+});
+
+ipcMain.handle('updates:get-version', async () => ({
+  version: app.getVersion(),
+  releasesPage: RELEASES_PAGE
+}));
+
+ipcMain.handle('updates:check', async () => runUpdateCheck({ notify: false }));
+
+ipcMain.handle('updates:open-download', async (_event, url) => {
+  const target = String(url || RELEASES_PAGE).trim() || RELEASES_PAGE;
+  try {
+    await shell.openExternal(target);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
 });
 
 ipcMain.handle('setup:get-status', async () => buildStatus());
