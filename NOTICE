@@ -1,0 +1,19 @@
+AGPL-3.0 Attribution Notice
+===========================
+
+This Electron rebuild includes logic and data adapted from:
+
+  OpenMacro XTernal
+  Copyright (c) 2026 OpenMacro XTernal (@anorexc)
+  Licensed under the GNU Affero General Public License v3.0 only
+  https://www.gnu.org/licenses/agpl-3.0.txt
+
+Derivative work in this repository:
+  Copyright (c) 2026 Jhon Loyd Nacional
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3 only.
+
+Offsets in settings/offsets.json are bundled from the upstream project and may
+be updated from public offset sources referenced there.

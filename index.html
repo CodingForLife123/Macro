@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Macro | v0.0.1</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Requirements setup gate — must finish before macro app unlocks -->
+  <div class="setup-overlay" id="setup-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="setup-title">
+    <div class="setup-card">
+      <div class="setup-header">
+        <h2 id="setup-title">Install requirements</h2>
+        <p>Required packages must be installed before you can use the macro. This prevents runtime errors.</p>
+      </div>
+
+      <ul class="setup-list" id="setup-list" aria-live="polite"></ul>
+
+      <div class="setup-log-wrap">
+        <div class="setup-log-label">Install log</div>
+        <pre class="setup-log" id="setup-log" aria-label="Installation log"></pre>
+      </div>
+
+      <p class="setup-status" id="setup-status">Checking requirements…</p>
+
+      <div class="setup-actions">
+        <button type="button" class="btn btn-primary" id="setup-install">Install requirements</button>
+        <button type="button" class="btn btn-secondary" id="setup-continue" hidden>Continue to macro</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app" id="app" hidden>
+    <header class="app-header">
+      <nav class="tabs" role="tablist" aria-label="Main navigation">
+        <button class="tab" role="tab" id="tab-home" aria-selected="true" aria-controls="panel-home">Home</button>
+        <button class="tab" role="tab" id="tab-appraise" aria-selected="false" aria-controls="panel-appraise">Appraise</button>
+        <button class="tab" role="tab" id="tab-settings" aria-selected="false" aria-controls="panel-settings">Settings</button>
+        <button class="tab" role="tab" id="tab-updates" aria-selected="false" aria-controls="panel-updates">Updates</button>
+        <button class="tab" role="tab" id="tab-about" aria-selected="false" aria-controls="panel-about">About</button>
+      </nav>
+    </header>
+
+    <main class="app-main">
+      <!-- ── HOME ── -->
+      <section class="panel panel-home" id="panel-home" role="tabpanel" aria-labelledby="tab-home" aria-hidden="false">
+        
+        <div class="brand-row">
+         
+          <div class="brand-text">
+            <h1>Macro</h1>
+            <p>Created by Jhon Loyd Nacional</p>
+          </div>
+          <span class="brand-version">v0.0.1</span>
+        </div>
+
+        <div class="scroll-container">
+          <!-- Status Card -->
+          <div class="card card-accent" aria-live="polite">
+            <div class="status-grid">
+              <div>
+                <div class="status-label">Equipped</div>
+                <div class="status-value" id="rod-equipped">Waiting for Roblox…</div>
+              </div>
+              <div style="text-align: right;">
+                <div class="status-label">Status</div>
+                <div class="status-badge">
+                  <span class="status-dot waiting" id="status-dot" aria-hidden="true"></span>
+                  <span class="status-value" id="macro-status">OFF</span>
+                </div>
+              </div>
+            </div>
+            <div class="status-footer">
+              <span>Power <strong id="power-value">---</strong></span>
+              <span>Progress <strong id="progress-value">---</strong></span>
+            </div>
+          </div>
+          
+          <!-- Metrics -->
+          <div class="metrics">
+            <div class="metric primary">
+              <div class="metric-label">Caught</div>
+              <div class="metric-value" id="metric-caught">0</div>
+            </div>
+            <div class="metric danger">
+              <div class="metric-label">Lost</div>
+              <div class="metric-value" id="metric-lost">0</div>
+            </div>
+            <div class="metric success">
+              <div class="metric-label">Success</div>
+              <div class="metric-value" id="metric-success">0.0%</div>
+            </div>
+          </div>
+
+          <!-- Casting -->
+          <div class="section-header section-header--first">
+            <h2>Casting</h2>
+          </div>
+          <div class="card">
+            <div class="toggle-row">
+              <label class="toggle">
+                <input type="checkbox" id="perfect-cast" checked aria-describedby="perfect-cast-desc">
+                <span class="toggle-track"></span>
+              </label>
+              <div class="toggle-text">
+                <h3 id="perfect-cast-desc">Perfect cast</h3>
+                <p id="perfect-cast-copy">Hold until the power bar is nearly full for max distance. Turn off for a quick short cast.</p>
+              </div>
+              <button type="button" class="help-btn" style="margin-left: auto;" data-help="Perfect cast" data-desc="Perfect cast waits for ~96% power. Quick cast releases early (~28%) for faster fishing with shorter casts.">?</button>
+            </div>
+          </div>
+
+          <!-- Adjustments Section -->
+          <div class="section-header">
+            <h2>Adjustments</h2>
+          </div>
+          <div class="adjustments card">
+            <div class="field-row">
+              <span class="field-label">Update rate</span>
+              <button type="button" class="help-btn" data-help="Update Rate" data-desc="How often the macro updates balancing decisions in milliseconds. Lower reacts faster; higher feels smoother.">?</button>
+              <input type="number" id="update-rate" value="12" min="1" max="35">
+              <span class="field-hint">1 – 35</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Prediction strength</span>
+              <button type="button" class="help-btn" data-help="Prediction Strength" data-desc="How far ahead the macro predicts bar movement. Higher looks further ahead; lower feels more direct.">?</button>
+              <input type="number" id="prediction" value="4.0" min="1" max="20" step="0.1">
+              <span class="field-hint">1.0 – 20.0</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Neutral duty cycle</span>
+              <button type="button" class="help-btn" data-help="Neutral Duty Cycle" data-desc="Base hold-versus-release bias while balancing. Higher holds more; lower releases more.">?</button>
+              <input type="number" id="neutral-duty" value="0.35" min="0.2" max="0.6" step="0.01">
+              <span class="field-hint">0.20 – 0.60</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Close threshold</span>
+              <button type="button" class="help-btn" data-help="Close Threshold" data-desc="How close fish and player bar must be before fine balancing starts.">?</button>
+              <input type="number" id="close-threshold" value="0.04" min="0.01" max="0.1" step="0.01">
+              <span class="field-hint">0.01 – 0.10</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Velocity damping</span>
+              <button type="button" class="help-btn" data-help="Velocity Damping" data-desc="How fast the bar can move before switching back to stronger correction.">?</button>
+              <input type="number" id="velocity-damping" value="30" min="10" max="60">
+              <span class="field-hint">10 – 60</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Proportional gain</span>
+              <button type="button" class="help-btn" data-help="Proportional Gain" data-desc="How strongly the macro reacts to position error. Higher corrects harder.">?</button>
+              <input type="number" id="prop-gain" value="0.65" min="0.1" max="1.5" step="0.01">
+              <span class="field-hint">0.10 – 1.50</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Derivative gain</span>
+              <button type="button" class="help-btn" data-help="Derivative Gain" data-desc="How strongly the macro reacts to movement speed. Too high can feel twitchy.">?</button>
+              <input type="number" id="deriv-gain" value="0.18" min="0" max="1" step="0.01">
+              <span class="field-hint">0.00 – 1.00</span>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Edge boundary</span>
+              <button type="button" class="help-btn" data-help="Edge Boundary" data-desc="How close the bar can get to either edge before forcing recovery.">?</button>
+              <input type="number" id="edge-boundary" value="0.08" min="0.02" max="0.3" step="0.01">
+              <span class="field-hint">0.02 – 0.30</span>
+            </div>
+          </div>
+
+          <!-- Hotkeys Section -->
+          <div class="section-header">
+            <h2>Hotkeys</h2>
+            <button type="button" class="link" data-goto-tab="settings">Change →</button>
+          </div>
+          <div class="card card-hotkeys">
+            <div class="hotkey-list">
+              <span class="hotkey-item"><kbd data-hotkey-display="start_macro">Num1</kbd> Fishing</span>
+              <span class="hotkey-item"><kbd data-hotkey-display="start_appraise">Num4</kbd> Appraise</span>
+              <span class="hotkey-item"><kbd data-hotkey-display="spear_assist">Num2</kbd> Spear <span class="tag tag-beta">Beta</span></span>
+              <span class="hotkey-item"><kbd data-hotkey-display="harpoon_assist">Num3</kbd> Harpoon <span class="tag tag-broken">Broken</span></span>
+              <span class="hotkey-item"><kbd data-hotkey-display="fix_roblox">Num7</kbd> Fix</span>
+              <span class="hotkey-item"><kbd data-hotkey-display="reload">Num8</kbd> Reload</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sticky Config Footer -->
+        <!-- <div class="config-bar card">
+          <div class="section-header" style="margin: 0 0 8px 0;">
+            <h2>Configuration</h2>
+          </div>
+          <div class="config-actions">
+            <select id="config-select" class="select" aria-label="Saved config profile">
+              <option>No configs</option>
+              <option>Default</option>
+              <option>Aggressive</option>
+            </select>
+            <button type="button" class="btn btn-secondary" data-action="load-config">Load</button>
+            <button type="button" class="btn btn-secondary" data-action="save-config">Save</button>
+            <button type="button" class="btn btn-secondary" data-action="new-config">New</button>
+            <button type="button" class="btn btn-secondary" data-action="delete-config">Del</button>
+          </div>
+          <div class="config-links">
+            <button type="button" data-action="open-folder">Configs folder</button>
+            <button type="button" data-action="import-config">Import</button>
+            <button type="button" data-action="export-config">Export</button>
+            <button type="button" class="spacer" data-action="advanced-settings">Advanced Settings</button>
+          </div>
+        </div> -->
+      </section>
+
+      <!-- ── APPRAISE ── -->
+      <section class="panel panel-scroll" id="panel-appraise" role="tabpanel" aria-labelledby="tab-appraise" aria-hidden="true">
+        <div class="section-header">
+          <h2>Auto Appraise</h2>
+        </div>
+
+        <div class="card">
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="auto-appraise" aria-describedby="appraise-toggle-desc">
+              <span class="toggle-track"></span>
+            </label>
+            <div class="toggle-text">
+              <h3 id="appraise-toggle-desc">Enable auto appraise</h3>
+              <p id="appraise-enable-desc" data-hotkey-copy="When on, the appraise hotkey ({start_appraise}) can run auto-appraise. Fishing always uses {start_macro}.">When on, the appraise hotkey (Num4) can run auto-appraise. Fishing always uses Num1.</p>
+            </div>
+            <button type="button" class="help-btn" style="margin-left: auto;" data-help="Enable Auto Appraise" data-hotkey-desc="Turns on appraise mode for the {start_appraise} hotkey. {start_macro} always controls fishing.">?</button>
+          </div>
+        </div>
+
+        <div class="card field-grid">
+          <div class="field-group">
+            <label for="mutation-select">
+              Mutation
+              <button type="button" class="help-btn" data-help="Mutation" data-desc="The mutation the macro will target when appraising.">?</button>
+            </label>
+            <div class="select-wrap">
+              <select id="mutation-select" class="select">
+                <option>Mythical</option>
+                <option>Abyssal</option>
+                <option>Glossy</option>
+                <option>Electric</option>
+                <option>Negative</option>
+                <option>Amber</option>
+                <option>Fossilized</option>
+                <option>Silver</option>
+                <option>Darkened</option>
+                <option>Scorched</option>
+                <option>Albino</option>
+                <option>Lunar</option>
+                <option>Mosaic</option>
+                <option>Translucent</option>
+                <option>Shiny</option>
+                <option>Big</option>
+                <option>Midas</option>
+                <option>Hexed</option>
+                <option>Frozen</option>
+                <option>Sparkling</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-icon" id="add-mutation" aria-label="Add custom mutation" title="Add custom mutation">+</button>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="appraise-delay">
+              Appraise delay (ms)
+              <button type="button" class="help-btn" data-help="Appraise Delay" data-desc="How quickly the macro checks and appraises. Higher is safer but slower.">?</button>
+            </label>
+            <input type="number" id="appraise-delay" value="500" min="0">
+          </div>
+
+          <div class="field-group">
+            <label>Click point</label>
+            <div class="coord-row">
+              <div class="field-group">
+                <label for="click-x">X</label>
+                <input type="text" id="click-x" readonly placeholder="—" aria-label="Click point X coordinate">
+              </div>
+              <div class="field-group">
+                <label for="click-y">Y</label>
+                <input type="text" id="click-y" readonly placeholder="—" aria-label="Click point Y coordinate">
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-group">
+            <button type="button" class="btn btn-secondary" id="pick-point">Pick click point</button>
+            <button type="button" class="btn btn-secondary" id="clear-point">Clear point</button>
+          </div>
+        </div>
+
+        <p class="status-message" id="appraise-status">Status: Ready.</p>
+
+        
+      </section>
+
+      <!-- ── SETTINGS ── -->
+      <section class="panel panel-scroll" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" aria-hidden="true">
+        <div class="section-header">
+          <h2>Notifications</h2>
+        </div>
+        <div class="card">
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="notifications-enabled" checked>
+              <span class="toggle-track"></span>
+            </label>
+            <div class="toggle-text">
+              <h3>Desktop notifications</h3>
+              <p>Show toasts for start/stop, errors, appraise, and connection status.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2>Roblox</h2>
+        </div>
+        <div class="card">
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="auto-fix-offsets" checked>
+              <span class="toggle-track"></span>
+            </label>
+            <div class="toggle-text">
+              <h3>Auto-fix offsets</h3>
+              <p>When Roblox updates, download matching memory offsets so the macro can re-attach.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2>Updates</h2>
+          <button type="button" class="link" data-action="open-settings-folder">Open folder</button>
+        </div>
+        <div class="card">
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="auto-update" checked>
+              <span class="toggle-track"></span>
+            </label>
+            <div class="toggle-text">
+              <h3>Automatic updates</h3>
+              <p>Install silently in the background.</p>
+            </div>
+          </div>
+          <div class="toggle-row" style="padding-top: 0;">
+            <label class="toggle">
+              <input type="checkbox" id="update-confirm" checked>
+              <span class="toggle-track"></span>
+            </label>
+            <div class="toggle-text">
+              <h3>Show update confirmation</h3>
+              <p>Success message after updates install.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2>Hotkeys</h2>
+        </div>
+
+        <div class="hotkey-row">
+          <button type="button" class="key-input" data-hotkey="start_macro" aria-label="Start macro hotkey">Num1</button>
+          <div>
+            <h3>Start macro</h3>
+            <p data-hotkey-copy="Toggle fishing on and off with {start_macro}. Does not start appraise.">Toggle fishing on and off. Does not start appraise.</p>
+          </div>
+        </div>
+        <div class="hotkey-row">
+          <button type="button" class="key-input" data-hotkey="start_appraise" aria-label="Start appraise hotkey">Num4</button>
+          <div>
+            <h3>Start appraise</h3>
+            <p data-hotkey-copy="Toggle auto-appraise on and off with {start_appraise}. Requires enable auto appraise in the Appraise tab.">Toggle auto-appraise on and off. Requires enable auto appraise in the Appraise tab.</p>
+          </div>
+        </div>
+        <div class="hotkey-row">
+          <button type="button" class="key-input" data-hotkey="spear_assist" aria-label="Spear assist hotkey">Num2</button>
+          <div>
+            <h3>Spear assist <span class="tag tag-beta">Beta</span></h3>
+            <p>Start the spear minigame, then press this key.</p>
+          </div>
+        </div>
+        <div class="hotkey-row">
+          <button type="button" class="key-input" data-hotkey="harpoon_assist" aria-label="Harpoon assist hotkey">Num3</button>
+          <div>
+            <h3>Harpoon assist <span class="tag tag-broken">Broken</span></h3>
+            <p>Tracks moving PULL! circles after shooting the fish.</p>
+          </div>
+        </div>
+        <div class="hotkey-row">
+          <button type="button" class="key-input" data-hotkey="fix_roblox" aria-label="Fix Roblox hotkey">Num7</button>
+          <div>
+            <h3>Fix Roblox</h3>
+            <p>Re-attaches to Roblox if the macro can't read your rod.</p>
+          </div>
+        </div>
+        <div class="hotkey-row">
+          <button type="button" class="key-input" data-hotkey="reload" aria-label="Reload hotkey">Num8</button>
+          <div>
+            <h3>Reload</h3>
+            <p>Reload the macro process.</p>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2>Appearance</h2>
+        </div>
+        <div class="card">
+          <div class="field-group" style="margin-bottom: 12px;">
+            <label for="theme-select">Theme</label>
+            <select id="theme-select" class="select">
+              <option>Forest</option>
+              <option>Midnight</option>
+              <option>Ocean</option>
+              <option>Custom</option>
+            </select>
+          </div>
+          <div class="color-row">
+            <label for="accent-color">Accent color</label>
+            <input type="text" id="accent-color" value="0B8A5E" maxlength="6" aria-label="Accent color hex">
+            <div class="swatch" id="swatch-accent" style="background: #0b8a5e;" aria-hidden="true"></div>
+          </div>
+          <div class="color-row">
+            <label for="bg-color">Background</label>
+            <input type="text" id="bg-color" value="EEF5F0" maxlength="6" aria-label="Background color hex">
+            <div class="swatch" id="swatch-bg" style="background: #eef5f0;" aria-hidden="true"></div>
+          </div>
+          <div class="color-row">
+            <label for="text-color">Text color</label>
+            <input type="text" id="text-color" value="0F1A15" maxlength="6" aria-label="Text color hex">
+            <div class="swatch" id="swatch-text" style="background: #0f1a15;" aria-hidden="true"></div>
+          </div>
+          <div class="color-row">
+            <label for="border-color">Border color</label>
+            <input type="text" id="border-color" value="C5D4CB" maxlength="6" aria-label="Border color hex">
+            <div class="swatch" id="swatch-border" style="background: #c5d4cb;" aria-hidden="true"></div>
+          </div>
+          <p style="margin: 12px 0 0; font-size: 12px; font-weight: 500; color: var(--text-muted);">Pick a preset or edit colors, then press Apply to save.</p>
+          <button type="button" class="btn btn-primary" style="width: 100%; margin-top: 12px;" id="apply-theme">Apply theme</button>
+        </div>
+      </section>
+
+      <!-- ── UPDATES ── -->
+      <section class="panel panel-scroll" id="panel-updates" role="tabpanel" aria-labelledby="tab-updates" aria-hidden="true">
+        <div class="card card-accent version-card">
+          <h3>Version 0.0.1</h3>
+          <time datetime="2026-08-24">August 24, 2026</time>
+        </div>
+        <div class="changelog">
+          <p><strong>Initial UI</strong></p>
+          <ul>
+            <li>Desktop shell with Home, Appraise, Settings, Updates, and About tabs</li>
+            <li>Live status dashboard with session metrics</li>
+            <li>Adjustment controls with inline help tooltips</li>
+            <li>Config profile management UI</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ── ABOUT ── -->
+      <section class="panel panel-scroll" id="panel-about" role="tabpanel" aria-labelledby="tab-about" aria-hidden="true">
+        <div class="card card-accent">
+          <div class="about-hero">
+            <div class="brand-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C8 2 5 5.5 5 9.5c0 2.2 1 4.2 2.6 5.5L12 22l4.4-7C18 13.7 19 11.7 19 9.5 19 5.5 16 2 12 2zm0 5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z"/>
+              </svg>
+            </div>
+            <div>
+              <h3>Macro</h3>
+              <p>External Fisch macro</p>
+              <p class="creator-credit">Created by <strong>Jhon Loyd Nacional</strong></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2>About this project</h2>
+        </div>
+        <p class="legal">
+          This project is a clone/rebuild of OpenMacro XTernal functionality using Electron.
+          Reference source is used for feature parity during development. The original XTernal
+          project is licensed under AGPL-3.0-only — any redistribution must comply with those terms.
+        </p>
+
+        <p class="footer-note">Macro · Created by Jhon Loyd Nacional</p>
+      </section>
+    </main>
+  </div>
+
+  <div class="tooltip-popup" id="tooltip" role="tooltip" aria-hidden="true"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="prompt-overlay" id="mutation-prompt" hidden role="dialog" aria-modal="true" aria-labelledby="mutation-prompt-title">
+    <div class="prompt-card">
+      <h3 id="mutation-prompt-title">Add custom mutation</h3>
+      <p>Type the exact mutation name you want the appraiser to look for.</p>
+      <input type="text" id="mutation-prompt-input" class="prompt-input" maxlength="64" placeholder="e.g. Mythical" autocomplete="off">
+      <div class="prompt-actions">
+        <button type="button" class="btn btn-secondary" id="mutation-prompt-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="mutation-prompt-save">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const setupOverlay = document.getElementById('setup-overlay');
+      const appRoot = document.getElementById('app');
+      const setupList = document.getElementById('setup-list');
+      const setupLog = document.getElementById('setup-log');
+      const setupStatus = document.getElementById('setup-status');
+      const setupInstallBtn = document.getElementById('setup-install');
+      const setupContinueBtn = document.getElementById('setup-continue');
+      let setupDone = false;
+
+      function appendLog(text) {
+        if (!text) return;
+        setupLog.textContent += text;
+        setupLog.scrollTop = setupLog.scrollHeight;
+      }
+
+      function renderSetupStatus(status) {
+        setupList.innerHTML = '';
+
+        const platformItem = document.createElement('li');
+        platformItem.className = 'setup-item ' + (status.platformOk ? 'is-ready' : 'is-missing');
+        platformItem.innerHTML =
+          '<div class="setup-item-main">' +
+          '<strong>Windows platform</strong>' +
+          '<span>' + (status.platformOk ? 'Ready (' + status.platform + ')' : 'This macro requires Windows (' + status.platformRequired + ')') + '</span>' +
+          '</div>' +
+          '<span class="setup-badge">' + (status.platformOk ? 'Ready' : 'Blocked') + '</span>';
+        setupList.appendChild(platformItem);
+
+        status.items.forEach((item) => {
+          const li = document.createElement('li');
+          li.className = 'setup-item is-' + item.status;
+          const badge =
+            item.status === 'ready' ? 'Ready' :
+            item.status === 'broken' ? 'Broken' : 'Missing';
+          li.innerHTML =
+            '<div class="setup-item-main">' +
+            '<strong>' + item.label + '</strong>' +
+            '<span>' + item.description + (item.error && item.status !== 'ready' ? ' — ' + item.error : '') + '</span>' +
+            '</div>' +
+            '<span class="setup-badge">' + badge + '</span>';
+          setupList.appendChild(li);
+        });
+
+        if (status.ready) {
+          setupStatus.textContent = 'All requirements are installed. You can continue.';
+          setupStatus.className = 'setup-status is-ok';
+          setupInstallBtn.hidden = true;
+          setupContinueBtn.hidden = false;
+        } else {
+          setupStatus.textContent = 'Install requirements before using the macro.';
+          setupStatus.className = 'setup-status';
+          setupInstallBtn.hidden = false;
+          setupInstallBtn.disabled = !status.platformOk;
+          setupContinueBtn.hidden = true;
+        }
+      }
+
+      async function showSetupOrApp() {
+        if (!window.macroSetup) {
+          setupOverlay.hidden = false;
+          setupStatus.textContent = 'Setup bridge missing. Restart the app with npm start.';
+          setupStatus.className = 'setup-status is-error';
+          setupInstallBtn.disabled = true;
+          return;
+        }
+
+        const status = await window.macroSetup.getStatus();
+        if (status.completed && status.ready) {
+          unlockMacroApp();
+          return;
+        }
+
+        setupOverlay.hidden = false;
+        renderSetupStatus(status);
+      }
+
+      function unlockMacroApp() {
+        if (setupDone) return;
+        setupDone = true;
+        setupOverlay.hidden = true;
+        appRoot.hidden = false;
+        console.log('MACRO_SETUP_DONE');
+        if (window.macro) {
+          window.macro.setSettings(collectMacroSettings()).catch(() => {});
+          window.macro.getStatus().then(applyMacroStatus).catch(() => {});
+          if (window.macro.getHotkeys) {
+            window.macro.getHotkeys().then(applyHotkeysToUi).catch(() => {});
+          }
+        }
+      }
+
+      setupContinueBtn.addEventListener('click', unlockMacroApp);
+
+      setupInstallBtn.addEventListener('click', async () => {
+        if (!window.macroSetup) return;
+        setupInstallBtn.disabled = true;
+        setupContinueBtn.hidden = true;
+        setupStatus.textContent = 'Installing… please wait.';
+        setupStatus.className = 'setup-status';
+        setupLog.textContent = '';
+
+        const stopProgress = window.macroSetup.onProgress((payload) => {
+          if (payload.type === 'log') appendLog(payload.line);
+          if (payload.type === 'phase') {
+            setupStatus.textContent = payload.message;
+          }
+          if (payload.type === 'error') {
+            setupStatus.textContent = payload.message;
+            setupStatus.className = 'setup-status is-error';
+          }
+          if (payload.type === 'done') {
+            setupStatus.textContent = payload.message;
+            setupStatus.className = 'setup-status is-ok';
+          }
+        });
+
+        try {
+          const result = await window.macroSetup.install();
+          renderSetupStatus(result.status);
+          if (result.ok) {
+            setupContinueBtn.hidden = false;
+            setupInstallBtn.hidden = true;
+          } else {
+            setupInstallBtn.disabled = false;
+            setupInstallBtn.hidden = false;
+            setupStatus.textContent = result.error || 'Install failed. Try again.';
+            setupStatus.className = 'setup-status is-error';
+          }
+        } catch (err) {
+          setupInstallBtn.disabled = false;
+          setupStatus.textContent = err.message || 'Install failed.';
+          setupStatus.className = 'setup-status is-error';
+        } finally {
+          stopProgress();
+        }
+      });
+
+      showSetupOrApp();
+
+      const tabs = document.querySelectorAll('.tab');
+      const panels = document.querySelectorAll('.panel');
+      const tooltip = document.getElementById('tooltip');
+      const toast = document.getElementById('toast');
+      let toastTimer;
+
+      function switchTab(tabId) {
+        tabs.forEach((tab) => tab.setAttribute('aria-selected', tab.id === tabId));
+        panels.forEach((panel) => {
+          const show = panel.id === document.getElementById(tabId).getAttribute('aria-controls');
+          panel.setAttribute('aria-hidden', show ? 'false' : 'true');
+        });
+      }
+
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => switchTab(tab.id));
+        tab.addEventListener('keydown', (e) => {
+          const idx = Array.from(tabs).indexOf(tab);
+          if (e.key === 'ArrowRight') { e.preventDefault(); tabs[(idx + 1) % tabs.length].focus(); }
+          else if (e.key === 'ArrowLeft') { e.preventDefault(); tabs[(idx - 1 + tabs.length) % tabs.length].focus(); }
+        });
+      });
+
+      document.querySelectorAll('[data-goto-tab]').forEach((el) => {
+        el.addEventListener('click', () => switchTab('tab-' + el.dataset.gotoTab));
+      });
+
+      document.querySelectorAll('.help-btn').forEach((btn) => {
+        btn.addEventListener('mouseenter', () => showTooltip(btn));
+        btn.addEventListener('focus', () => showTooltip(btn));
+        btn.addEventListener('mouseleave', hideTooltip);
+        btn.addEventListener('blur', hideTooltip);
+      });
+
+      function showTooltip(btn) {
+        const desc = btn.dataset.desc || btn.dataset.hotkeyDesc || '';
+        tooltip.innerHTML = '<strong>' + (btn.dataset.help || '') + '</strong>' + desc;
+        tooltip.classList.add('visible');
+        tooltip.setAttribute('aria-hidden', 'false');
+        const rect = btn.getBoundingClientRect();
+        tooltip.style.left = Math.min(rect.left, window.innerWidth - 280) + 'px';
+        tooltip.style.top = (rect.bottom + 8) + 'px';
+      }
+
+      function hideTooltip() {
+        tooltip.classList.remove('visible');
+        tooltip.setAttribute('aria-hidden', 'true');
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+      }
+
+      const HOTKEY_LABELS = {
+        start_macro: 'Start fishing',
+        start_appraise: 'Start appraise',
+        spear_assist: 'Spear assist',
+        harpoon_assist: 'Harpoon assist',
+        fix_roblox: 'Fix Roblox',
+        reload: 'Reload'
+      };
+
+      let listeningHotkeyBtn = null;
+      let listeningPrevious = '';
+
+      function eventToAccelerator(e) {
+        const ignore = new Set([
+          'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock',
+          'Dead', 'Unidentified'
+        ]);
+        if (ignore.has(e.key)) return null;
+
+        if (/^F([1-9]|1[0-2])$/i.test(e.key)) return e.key.toUpperCase();
+
+        const code = e.code || '';
+        // Top-row digits stay "1"; numpad digits become Electron "num1"
+        if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+        if (/^Numpad[0-9]$/.test(code)) return 'num' + code.slice(6);
+        if (code === 'NumpadDecimal') return 'numdec';
+        if (code === 'NumpadAdd') return 'numadd';
+        if (code === 'NumpadSubtract') return 'numsub';
+        if (code === 'NumpadMultiply') return 'nummult';
+        if (code === 'NumpadDivide') return 'numdiv';
+        if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+
+        const map = {
+          ' ': 'Space',
+          Escape: 'Escape',
+          Tab: 'Tab',
+          Enter: 'Enter',
+          Backspace: 'Backspace',
+          Delete: 'Delete',
+          Insert: 'Insert',
+          Home: 'Home',
+          End: 'End',
+          PageUp: 'PageUp',
+          PageDown: 'PageDown',
+          ArrowUp: 'Up',
+          ArrowDown: 'Down',
+          ArrowLeft: 'Left',
+          ArrowRight: 'Right'
+        };
+        if (map[e.key]) return map[e.key];
+
+        if (e.key.length === 1) return e.key.toUpperCase();
+        return null;
+      }
+
+      function formatHotkeyLabel(accel) {
+        const key = String(accel || '').trim();
+        if (!key) return '—';
+        const num = key.match(/^num([0-9])$/i);
+        if (num) return 'Num' + num[1];
+        const labels = {
+          numdec: 'Num.',
+          numadd: 'Num+',
+          numsub: 'Num-',
+          nummult: 'Num*',
+          numdiv: 'Num/'
+        };
+        if (labels[key.toLowerCase()]) return labels[key.toLowerCase()];
+        return key;
+      }
+
+      function hotkeyLabelForAction(action, hotkeys, labels) {
+        const value = hotkeys[action];
+        return (labels && labels[action]) || formatHotkeyLabel(value) || DEFAULT_HOTKEYS_FALLBACK[action] || '—';
+      }
+
+      function applyHotkeyCopy(hotkeys, labels) {
+        document.querySelectorAll('[data-hotkey-copy]').forEach((el) => {
+          let text = el.dataset.hotkeyCopy || el.textContent || '';
+          Object.keys(hotkeys).forEach((action) => {
+            const label = hotkeyLabelForAction(action, hotkeys, labels);
+            text = text.replace(new RegExp('\\{' + action + '\\}', 'g'), label);
+          });
+          el.textContent = text;
+        });
+
+        document.querySelectorAll('[data-hotkey-desc]').forEach((el) => {
+          let text = el.dataset.hotkeyDesc || '';
+          Object.keys(hotkeys).forEach((action) => {
+            const label = hotkeyLabelForAction(action, hotkeys, labels);
+            text = text.replace(new RegExp('\\{' + action + '\\}', 'g'), label);
+          });
+          el.dataset.desc = text;
+        });
+      }
+
+      function applyHotkeysToUi(payload) {
+        const hotkeys = payload && payload.hotkeys ? payload.hotkeys : payload;
+        const labels = payload && payload.labels ? payload.labels : null;
+        if (!hotkeys) return;
+        document.querySelectorAll('[data-hotkey]').forEach((btn) => {
+          const action = btn.dataset.hotkey;
+          const value = hotkeys[action];
+          if (btn === listeningHotkeyBtn) return;
+          btn.textContent = hotkeyLabelForAction(action, hotkeys, labels);
+        });
+        document.querySelectorAll('[data-hotkey-display]').forEach((el) => {
+          const action = el.dataset.hotkeyDisplay;
+          el.textContent = hotkeyLabelForAction(action, hotkeys, labels);
+        });
+        applyHotkeyCopy(hotkeys, labels);
+      }
+
+      function stopHotkeyListening(restore) {
+        if (!listeningHotkeyBtn) return;
+        listeningHotkeyBtn.classList.remove('is-listening');
+        if (restore) listeningHotkeyBtn.textContent = listeningPrevious || '—';
+        listeningHotkeyBtn = null;
+        listeningPrevious = '';
+      }
+
+      function startHotkeyListening(btn) {
+        stopHotkeyListening(true);
+        listeningHotkeyBtn = btn;
+        listeningPrevious = btn.textContent;
+        btn.classList.add('is-listening');
+        btn.textContent = 'press any key';
+        btn.focus();
+      }
+
+      async function loadHotkeys() {
+        if (!window.macro || !window.macro.getHotkeys) return;
+        try {
+          const hotkeys = await window.macro.getHotkeys();
+          applyHotkeysToUi(hotkeys);
+        } catch {
+          // ignore
+        }
+      }
+
+      const DEFAULT_HOTKEYS_FALLBACK = {
+        start_macro: 'num1',
+        start_appraise: 'num4',
+        spear_assist: 'num2',
+        harpoon_assist: 'num3',
+        fix_roblox: 'num7',
+        reload: 'num8'
+      };
+
+      document.querySelectorAll('[data-hotkey]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (listeningHotkeyBtn === btn) {
+            stopHotkeyListening(true);
+            return;
+          }
+          startHotkeyListening(btn);
+        });
+      });
+
+      window.addEventListener(
+        'keydown',
+        async (e) => {
+          if (!listeningHotkeyBtn) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (e.key === 'Escape') {
+            stopHotkeyListening(true);
+            showToast('Hotkey change cancelled');
+            return;
+          }
+
+          const accel = eventToAccelerator(e);
+          if (!accel) return;
+
+          const action = listeningHotkeyBtn.dataset.hotkey;
+          const btn = listeningHotkeyBtn;
+          const previous = listeningPrevious;
+          const label = formatHotkeyLabel(accel);
+          stopHotkeyListening(false);
+          btn.textContent = label;
+
+          if (!window.macro || !window.macro.setHotkey) {
+            showToast((HOTKEY_LABELS[action] || action) + ' → ' + label);
+            return;
+          }
+
+          try {
+            const result = await window.macro.setHotkey(action, accel);
+            if (!result.ok) {
+              btn.textContent = previous || DEFAULT_HOTKEYS_FALLBACK[action] || '—';
+              showToast(result.error || 'Could not save hotkey');
+              await loadHotkeys();
+              return;
+            }
+            applyHotkeysToUi(result);
+            showToast((HOTKEY_LABELS[action] || action) + ' → ' + label);
+            if (result.register && result.register.errors && result.register.errors.length) {
+              setTimeout(() => showToast(result.register.errors[0]), 2300);
+            }
+          } catch (err) {
+            btn.textContent = previous || DEFAULT_HOTKEYS_FALLBACK[action] || '—';
+            showToast(err.message || 'Failed to save hotkey');
+            await loadHotkeys();
+          }
+        },
+        true
+      );
+
+      document.addEventListener('mousedown', (e) => {
+        if (!listeningHotkeyBtn) return;
+        if (e.target && e.target.closest && e.target.closest('[data-hotkey]')) return;
+        stopHotkeyListening(true);
+      });
+
+      loadHotkeys();
+
+      function numVal(id, fallback) {
+        const el = document.getElementById(id);
+        if (!el) return fallback;
+        const n = Number(el.value);
+        return Number.isFinite(n) ? n : fallback;
+      }
+
+      function collectMacroSettings() {
+        const clickX = document.getElementById('click-x');
+        const clickY = document.getElementById('click-y');
+        const mutation = document.getElementById('mutation-select');
+        const delay = document.getElementById('appraise-delay');
+        const enabled = document.getElementById('auto-appraise');
+        return {
+          update_rate: numVal('update-rate', 12),
+          prediction_strength: numVal('prediction', 4),
+          neutral_duty_cycle: numVal('neutral-duty', 0.35),
+          close_threshold: numVal('close-threshold', 0.04),
+          velocity_damping: numVal('velocity-damping', 30),
+          proportional_gain: numVal('prop-gain', 0.65),
+          derivative_gain: numVal('deriv-gain', 0.18),
+          edge_boundary: numVal('edge-boundary', 0.08),
+          cast_mode: document.getElementById('perfect-cast')?.checked !== false ? 'full' : 'short',
+          cast_timeout_ms: 15000,
+          post_cast_delay_ms: 150,
+          cast_on_timeout: true,
+          completion_threshold: 99.7,
+          shake_interval_ms: 25,
+          auto_appraise_enabled: !!(enabled && enabled.checked),
+          auto_appraise_mutation: mutation ? mutation.value : 'Mythical',
+          appraise_delay_ms: delay ? Number(delay.value) || 500 : 500,
+          auto_appraise_click_x: clickX && clickX.value !== '' ? Number(clickX.value) : '',
+          auto_appraise_click_y: clickY && clickY.value !== '' ? Number(clickY.value) : '',
+          custom_mutations: (() => {
+            const select = document.getElementById('mutation-select');
+            if (!select) return [];
+            const defaults = [
+              'Mythical', 'Abyssal', 'Glossy', 'Electric', 'Negative', 'Amber', 'Fossilized',
+              'Silver', 'Darkened', 'Scorched', 'Albino', 'Lunar', 'Mosaic', 'Translucent',
+              'Shiny', 'Big', 'Midas', 'Hexed', 'Frozen', 'Sparkling'
+            ];
+            return [...select.options]
+              .map((o) => o.value)
+              .filter((name) => name && !defaults.includes(name));
+          })()
+        };
+      }
+
+      function applyMacroStatus(status) {
+        if (!status) return;
+        const rodEl = document.getElementById('rod-equipped');
+        const statusEl = document.getElementById('macro-status');
+        const dotEl = document.getElementById('status-dot');
+        const powerEl = document.getElementById('power-value');
+        const progressEl = document.getElementById('progress-value');
+        const caughtEl = document.getElementById('metric-caught');
+        const lostEl = document.getElementById('metric-lost');
+        const successEl = document.getElementById('metric-success');
+
+        if (rodEl) rodEl.textContent = status.rod || (status.attached ? 'Attached' : 'Waiting for Roblox…');
+        if (statusEl) statusEl.textContent = status.phase || 'OFF';
+        if (powerEl) powerEl.textContent = status.power || '---';
+        if (progressEl) progressEl.textContent = status.progress || '---';
+        if (caughtEl) caughtEl.textContent = String(status.caught ?? 0);
+        if (lostEl) lostEl.textContent = String(status.lost ?? 0);
+        if (successEl) successEl.textContent = status.success || '0.0%';
+
+        if (dotEl) {
+          dotEl.classList.remove('waiting', 'on', 'off');
+          if (status.running || (status.phase && status.phase !== 'OFF')) dotEl.classList.add('on');
+          else if (status.attached) dotEl.classList.add('waiting');
+          else dotEl.classList.add('off');
+        }
+
+        const appraiseStatus = document.getElementById('appraise-status');
+        if (appraiseStatus && status.appraiseStatus) {
+          appraiseStatus.textContent = 'Status: ' + status.appraiseStatus;
+        }
+      }
+
+      if (window.macro) {
+        window.macro.onStatus(applyMacroStatus);
+        window.macro.getStatus().then(applyMacroStatus).catch(() => {});
+
+        const pushSettings = () => {
+          window.macro.setSettings(collectMacroSettings()).catch(() => {});
+        };
+        [
+          'update-rate', 'prediction', 'neutral-duty', 'close-threshold',
+          'velocity-damping', 'prop-gain', 'deriv-gain', 'edge-boundary',
+          'perfect-cast'
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('change', pushSettings);
+        });
+
+        const perfectCastToggle = document.getElementById('perfect-cast');
+        const perfectCastCopy = document.getElementById('perfect-cast-copy');
+        if (perfectCastToggle) {
+          perfectCastToggle.addEventListener('change', async () => {
+            if (perfectCastCopy) {
+              perfectCastCopy.textContent = perfectCastToggle.checked
+                ? 'Hold until the power bar is nearly full for max distance. Turn off for a quick short cast.'
+                : 'Quick cast is on — releases early for faster casts with shorter distance.';
+            }
+            if (!window.preferences || !window.preferences.save) return;
+            try {
+              await window.preferences.save({ perfectCastEnabled: perfectCastToggle.checked });
+            } catch {
+              showToast('Could not save cast setting.');
+            }
+          });
+        }
+
+        loadSavedPreferences().then(() => pushSettings()).catch(() => pushSettings());
+      }
+
+      document.querySelectorAll('[data-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (btn.dataset.action === 'advanced-settings') {
+            showToast('Advanced cast/shake settings coming soon — defaults are active');
+            return;
+          }
+
+          const labels = {
+            'load-config': 'Config loaded (UI demo)',
+            'save-config': 'Config saved (UI demo)',
+            'new-config': 'New config (UI demo)',
+            'delete-config': 'Config deleted (UI demo)',
+            'open-folder': 'Would open configs folder',
+            'import-config': 'Would open import dialog',
+            'export-config': 'Would open export dialog',
+            'open-settings-folder': 'Would open settings folder'
+          };
+          showToast(labels[btn.dataset.action] || 'Action pending backend');
+        });
+      });
+
+      async function loadAppraiseSettings() {
+        if (!window.macro || !window.macro.getAppraiseSettings) return;
+        try {
+          const s = await window.macro.getAppraiseSettings();
+          const enabled = document.getElementById('auto-appraise');
+          const mutation = document.getElementById('mutation-select');
+          const delay = document.getElementById('appraise-delay');
+          const clickX = document.getElementById('click-x');
+          const clickY = document.getElementById('click-y');
+          if (enabled) enabled.checked = !!s.auto_appraise_enabled;
+          if (mutation && Array.isArray(s.custom_mutations)) {
+            s.custom_mutations.forEach((name) => {
+              const n = String(name || '').trim();
+              if (!n) return;
+              const exists = [...mutation.options].some((o) => o.value.toLowerCase() === n.toLowerCase());
+              if (exists) return;
+              const opt = document.createElement('option');
+              opt.value = n;
+              opt.textContent = n;
+              mutation.appendChild(opt);
+            });
+          }
+          if (mutation && s.auto_appraise_mutation) {
+            const exists = [...mutation.options].some((o) => o.value === s.auto_appraise_mutation);
+            if (!exists) {
+              const opt = document.createElement('option');
+              opt.value = s.auto_appraise_mutation;
+              opt.textContent = s.auto_appraise_mutation;
+              mutation.appendChild(opt);
+            }
+            mutation.value = s.auto_appraise_mutation;
+          }
+          if (delay) delay.value = String(s.appraise_delay_ms || 500);
+          if (clickX) clickX.value = s.auto_appraise_click_x === '' || s.auto_appraise_click_x == null ? '' : String(s.auto_appraise_click_x);
+          if (clickY) clickY.value = s.auto_appraise_click_y === '' || s.auto_appraise_click_y == null ? '' : String(s.auto_appraise_click_y);
+        } catch {
+          // ignore
+        }
+      }
+
+      function pushAppraiseSettings() {
+        if (!window.macro) return;
+        window.macro.setSettings(collectMacroSettings()).catch(() => {});
+      }
+
+      ['auto-appraise', 'mutation-select', 'appraise-delay'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', pushAppraiseSettings);
+      });
+
+      const addMutationBtn = document.getElementById('add-mutation');
+      const mutationPrompt = document.getElementById('mutation-prompt');
+      const mutationPromptInput = document.getElementById('mutation-prompt-input');
+      const mutationPromptCancel = document.getElementById('mutation-prompt-cancel');
+      const mutationPromptSave = document.getElementById('mutation-prompt-save');
+
+      function closeMutationPrompt() {
+        if (!mutationPrompt) return;
+        mutationPrompt.hidden = true;
+        if (mutationPromptInput) mutationPromptInput.value = '';
+      }
+
+      function openMutationPrompt() {
+        if (!mutationPrompt || !mutationPromptInput) return;
+        mutationPrompt.hidden = false;
+        mutationPromptInput.value = '';
+        setTimeout(() => mutationPromptInput.focus(), 0);
+      }
+
+      function commitCustomMutation() {
+        const name = String((mutationPromptInput && mutationPromptInput.value) || '').trim();
+        if (!name) {
+          showToast('Enter a mutation name first');
+          if (mutationPromptInput) mutationPromptInput.focus();
+          return;
+        }
+
+        const select = document.getElementById('mutation-select');
+        if (!select) return;
+
+        const exists = [...select.options].some(
+          (o) => o.value.toLowerCase() === name.toLowerCase() || o.textContent.toLowerCase() === name.toLowerCase()
+        );
+        if (exists) {
+          const match = [...select.options].find(
+            (o) => o.value.toLowerCase() === name.toLowerCase() || o.textContent.toLowerCase() === name.toLowerCase()
+          );
+          if (match) select.value = match.value;
+          showToast('Mutation already in the list');
+          pushAppraiseSettings();
+          closeMutationPrompt();
+          return;
+        }
+
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+        select.value = name;
+        showToast('Added mutation: ' + name);
+        pushAppraiseSettings();
+        closeMutationPrompt();
+      }
+
+      if (addMutationBtn) {
+        addMutationBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          openMutationPrompt();
+        });
+      }
+      if (mutationPromptCancel) {
+        mutationPromptCancel.addEventListener('click', () => closeMutationPrompt());
+      }
+      if (mutationPromptSave) {
+        mutationPromptSave.addEventListener('click', () => commitCustomMutation());
+      }
+      if (mutationPromptInput) {
+        mutationPromptInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitCustomMutation();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeMutationPrompt();
+          }
+        });
+      }
+      if (mutationPrompt) {
+        mutationPrompt.addEventListener('mousedown', (e) => {
+          if (e.target === mutationPrompt) closeMutationPrompt();
+        });
+      }
+
+      const pickBtn = document.getElementById('pick-point');
+      if (pickBtn) {
+        pickBtn.addEventListener('click', async () => {
+          const statusEl = document.getElementById('appraise-status');
+          if (statusEl) statusEl.textContent = 'Status: Right-click anywhere to set the point…';
+          pickBtn.disabled = true;
+          showToast('Right-click on the appraiser option');
+          try {
+            if (!window.macro || !window.macro.pickAppraisePoint) {
+              throw new Error('Pick point unavailable');
+            }
+            const result = await window.macro.pickAppraisePoint();
+            if (!result.ok) {
+              if (statusEl) statusEl.textContent = 'Status: ' + (result.error || 'Pick cancelled.');
+              showToast(result.error || 'Pick cancelled');
+              return;
+            }
+            document.getElementById('click-x').value = String(result.x);
+            document.getElementById('click-y').value = String(result.y);
+            if (statusEl) statusEl.textContent = 'Status: Click point saved: ' + result.x + ', ' + result.y + '.';
+            showToast('Click point saved');
+            pushAppraiseSettings();
+          } catch (err) {
+            if (statusEl) statusEl.textContent = 'Status: ' + (err.message || 'Pick failed.');
+            showToast(err.message || 'Pick failed');
+          } finally {
+            pickBtn.disabled = false;
+          }
+        });
+      }
+
+      const clearBtn = document.getElementById('clear-point');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', async () => {
+          document.getElementById('click-x').value = '';
+          document.getElementById('click-y').value = '';
+          document.getElementById('appraise-status').textContent = 'Status: Click point cleared.';
+          if (window.macro && window.macro.clearAppraisePoint) {
+            await window.macro.clearAppraisePoint().catch(() => {});
+          }
+          pushAppraiseSettings();
+        });
+      }
+
+      loadAppraiseSettings();
+
+      function hexToRgb(hex) {
+        const h = String(hex || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+        if (h.length !== 6) return null;
+        return {
+          r: parseInt(h.slice(0, 2), 16),
+          g: parseInt(h.slice(2, 4), 16),
+          b: parseInt(h.slice(4, 6), 16)
+        };
+      }
+
+      function rgbToHex(r, g, b) {
+        return [r, g, b]
+          .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0'))
+          .join('')
+          .toUpperCase();
+      }
+
+      function mixHex(a, b, amount) {
+        const ca = hexToRgb(a);
+        const cb = hexToRgb(b);
+        if (!ca || !cb) return a;
+        return rgbToHex(
+          ca.r + (cb.r - ca.r) * amount,
+          ca.g + (cb.g - ca.g) * amount,
+          ca.b + (cb.b - ca.b) * amount
+        );
+      }
+
+      function luminance(hex) {
+        const rgb = hexToRgb(hex);
+        if (!rgb) return 1;
+        return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+      }
+
+      function applyThemeToDocument(colors) {
+        const accent = String(colors.accent || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6).toUpperCase();
+        const bg = String(colors.bg || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6).toUpperCase();
+        const text = String(colors.text || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6).toUpperCase();
+        const border = String(colors.border || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6).toUpperCase();
+        if ([accent, bg, text, border].some((hex) => hex.length !== 6)) return null;
+
+        const root = document.documentElement;
+        const isDark = luminance(bg) < 0.5;
+        const accentRgb = hexToRgb(accent);
+        const textMuted = mixHex(text, isDark ? 'FFFFFF' : '000000', isDark ? 0.35 : 0.55);
+
+        root.style.setProperty('--primary', '#' + accent.toLowerCase());
+        root.style.setProperty('--primary-hover', '#' + mixHex(accent, '000000', 0.15).toLowerCase());
+        root.style.setProperty('--primary-muted', `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`);
+        root.style.setProperty('--primary-soft', '#' + mixHex(accent, isDark ? bg : 'FFFFFF', isDark ? 0.82 : 0.9).toLowerCase());
+
+        root.style.setProperty('--bg', '#' + bg.toLowerCase());
+        root.style.setProperty('--surface', isDark ? '#' + mixHex(bg, 'FFFFFF', 0.06).toLowerCase() : '#ffffff');
+        root.style.setProperty('--surface-hi', isDark ? '#' + mixHex(bg, 'FFFFFF', 0.09).toLowerCase() : '#' + mixHex(bg, 'FFFFFF', 0.55).toLowerCase());
+        root.style.setProperty('--elevated', isDark ? '#' + mixHex(bg, 'FFFFFF', 0.08).toLowerCase() : '#ffffff');
+
+        root.style.setProperty('--border', '#' + border.toLowerCase());
+        root.style.setProperty('--border-strong', '#' + mixHex(border, isDark ? 'FFFFFF' : '000000', 0.25).toLowerCase());
+
+        root.style.setProperty('--text', '#' + text.toLowerCase());
+        root.style.setProperty('--text-secondary', '#' + mixHex(text, isDark ? 'FFFFFF' : '000000', isDark ? 0.15 : 0.35).toLowerCase());
+        root.style.setProperty('--text-muted', '#' + mixHex(text, isDark ? 'FFFFFF' : '000000', isDark ? 0.35 : 0.55).toLowerCase());
+        root.style.setProperty('--text-subtle', '#' + mixHex(text, isDark ? 'FFFFFF' : '000000', isDark ? 0.5 : 0.65).toLowerCase());
+
+        root.style.setProperty('--toggle-track-off', isDark ? '#' + mixHex(bg, 'FFFFFF', 0.18).toLowerCase() : '#' + mixHex(border, bg, 0.35).toLowerCase());
+        root.style.setProperty('--toggle-knob', isDark ? '#' + mixHex(text, bg, 0.08).toLowerCase() : '#ffffff');
+
+        root.setAttribute('data-theme-mode', isDark ? 'dark' : 'light');
+        root.style.colorScheme = isDark ? 'dark' : 'light';
+
+        const chevronStroke = textMuted.replace('#', '');
+        root.style.setProperty(
+          '--select-chevron',
+          `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23${chevronStroke}' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`
+        );
+
+        return { accent, bg, text, border };
+      }
+
+      function fillThemeInputs(colors) {
+        const map = {
+          accent: 'accent-color',
+          bg: 'bg-color',
+          text: 'text-color',
+          border: 'border-color'
+        };
+        Object.entries(map).forEach(([key, inputId]) => {
+          const input = document.getElementById(inputId);
+          const swatch = document.getElementById('swatch-' + key);
+          if (!input || !colors[key]) return;
+          input.value = colors[key];
+          if (swatch) swatch.style.background = '#' + colors[key].toLowerCase();
+        });
+      }
+
+      const themes = {
+        Midnight: { accent: '38BDF8', bg: '09090B', text: 'F4F4F5', border: '27272A' },
+        Ocean: { accent: '22D3EE', bg: '0B1220', text: 'E2E8F0', border: '1E3A5F' },
+        Forest: { accent: '0B8A5E', bg: 'EEF5F0', text: '0F1A15', border: 'C5D4CB' }
+      };
+
+      async function loadSavedAppearance() {
+        if (!window.appearance || !window.appearance.get) return;
+        try {
+          const saved = await window.appearance.get();
+          if (!saved) return;
+          const themeSelect = document.getElementById('theme-select');
+          if (themeSelect && saved.theme) themeSelect.value = saved.theme;
+          fillThemeInputs(saved);
+          applyThemeToDocument(saved);
+        } catch {
+          // ignore
+        }
+      }
+
+      const applyThemeBtn = document.getElementById('apply-theme');
+      if (applyThemeBtn) {
+        applyThemeBtn.addEventListener('click', async () => {
+          const themeSelect = document.getElementById('theme-select');
+          const payload = {
+            theme: themeSelect ? themeSelect.value : 'Custom',
+            accent: document.getElementById('accent-color')?.value || '',
+            bg: document.getElementById('bg-color')?.value || '',
+            text: document.getElementById('text-color')?.value || '',
+            border: document.getElementById('border-color')?.value || ''
+          };
+          const applied = applyThemeToDocument(payload);
+          if (!applied) {
+            showToast('Enter valid 6-digit hex colors for all fields.');
+            return;
+          }
+          fillThemeInputs(applied);
+          if (window.appearance && window.appearance.save) {
+            try {
+              await window.appearance.save({ ...payload, ...applied });
+              showToast('Theme applied and saved.');
+            } catch {
+              showToast('Theme applied locally, but save failed.');
+            }
+          } else {
+            showToast('Theme applied.');
+          }
+        });
+      }
+
+      const colorMap = [
+        ['accent-color', 'swatch-accent'],
+        ['bg-color', 'swatch-bg'],
+        ['text-color', 'swatch-text'],
+        ['border-color', 'swatch-border']
+      ];
+
+      colorMap.forEach(([inputId, swatchId]) => {
+        const input = document.getElementById(inputId);
+        const swatch = document.getElementById(swatchId);
+        if (!input || !swatch) return;
+        input.addEventListener('input', () => {
+          const hex = input.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+          input.value = hex.toUpperCase();
+          if (hex.length === 6) swatch.style.background = '#' + hex;
+          const themeSelect = document.getElementById('theme-select');
+          if (themeSelect) themeSelect.value = 'Custom';
+        });
+      });
+
+      const themeSelect = document.getElementById('theme-select');
+      if (themeSelect) {
+        themeSelect.addEventListener('change', (e) => {
+          const theme = themes[e.target.value];
+          if (!theme) return;
+          fillThemeInputs(theme);
+        });
+      }
+
+      async function loadSavedPreferences() {
+        if (!window.preferences || !window.preferences.get) return;
+        try {
+          const prefs = await window.preferences.get();
+          const notificationsToggle = document.getElementById('notifications-enabled');
+          if (notificationsToggle) {
+            notificationsToggle.checked = prefs.notificationsEnabled !== false;
+          }
+          const autoFixToggle = document.getElementById('auto-fix-offsets');
+          if (autoFixToggle) {
+            autoFixToggle.checked = prefs.autoFixOffsets !== false;
+          }
+          const perfectCastToggle = document.getElementById('perfect-cast');
+          const perfectCastCopy = document.getElementById('perfect-cast-copy');
+          if (perfectCastToggle) {
+            perfectCastToggle.checked = prefs.perfectCastEnabled !== false;
+            if (perfectCastCopy) {
+              perfectCastCopy.textContent = perfectCastToggle.checked
+                ? 'Hold until the power bar is nearly full for max distance. Turn off for a quick short cast.'
+                : 'Quick cast is on — releases early for faster casts with shorter distance.';
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const notificationsToggle = document.getElementById('notifications-enabled');
+      if (notificationsToggle) {
+        notificationsToggle.addEventListener('change', async () => {
+          if (!window.preferences || !window.preferences.save) return;
+          try {
+            await window.preferences.save({ notificationsEnabled: notificationsToggle.checked });
+            showToast(
+              notificationsToggle.checked
+                ? 'Desktop notifications enabled.'
+                : 'Desktop notifications disabled.'
+            );
+          } catch {
+            showToast('Could not save notification setting.');
+          }
+        });
+      }
+
+      const autoFixToggle = document.getElementById('auto-fix-offsets');
+      if (autoFixToggle) {
+        autoFixToggle.addEventListener('change', async () => {
+          if (!window.preferences || !window.preferences.save) return;
+          try {
+            await window.preferences.save({ autoFixOffsets: autoFixToggle.checked });
+            showToast(
+              autoFixToggle.checked
+                ? 'Auto-fix offsets enabled.'
+                : 'Auto-fix offsets disabled.'
+            );
+          } catch {
+            showToast('Could not save auto-fix setting.');
+          }
+        });
+      }
+
+      loadSavedAppearance();
+    })();
+  </script>
+</body>
+</html>

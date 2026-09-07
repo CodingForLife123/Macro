@@ -1,0 +1,54 @@
+# Dependencies — reinstall with: npm install
+node_modules/
+
+# Build / release output — do not commit binaries
+# (share installers via GitHub Releases, not the git repo)
+dist/
+out/
+release/
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.blockmap
+*.zip
+
+# Electron / electron-builder local caches
+.electron/
+.electron-builder/
+
+# Secrets & local env (add a .env.example if you need a template)
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tests / coverage
+coverage/
+.nyc_output/
+
+# Editors & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Local tooling noise
+.cursor/
+
+# Misc local-only files
+*.local

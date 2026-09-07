@@ -1,0 +1,65 @@
+{
+  "name": "macro",
+  "productName": "Macro",
+  "version": "0.0.1",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "setup": "npm install",
+    "dist": "electron-builder --win",
+    "dist:dir": "electron-builder --win --dir",
+    "dist:zip": "electron-builder --win --dir && node scripts/zip-unpacked.js"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Jhon Loyd Nacional",
+    "url": "https://github.com"
+  },
+  "license": "AGPL-3.0-only",
+  "description": "External Fisch macro (Electron rebuild of OpenMacro XTernal)",
+  "dependencies": {
+    "koffi": "^2.11.0"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.jhonloydnacional.macro",
+    "productName": "Macro",
+    "copyright": "Copyright © 2026 Jhon Loyd Nacional",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "notification.html",
+      "notification-preload.js",
+      "index.html",
+      "styles.css",
+      "requirements.js",
+      "LICENSE",
+      "NOTICE",
+      "src/**/*",
+      "settings/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "**/koffi/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}.exe",
+      "unpackDirName": "Macro"
+    }
+  }
+}

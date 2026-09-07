@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Macro Notifications</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      pointer-events: none;
+    }
+
+    .stack {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 0 0 2px;
+      pointer-events: none;
+    }
+
+    .toast-card {
+      --accent: #0b8a5e;
+      --surface: #ffffff;
+      --text: #0f1a15;
+      --text-muted: #51665b;
+      --type-color: var(--accent);
+      --type-soft: rgba(11, 138, 94, 0.12);
+
+      width: 372px;
+      max-width: 100%;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 0 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: none;
+      outline: none;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: none;
+      filter:
+        drop-shadow(0 14px 34px rgba(15, 26, 21, 0.16))
+        drop-shadow(0 4px 10px rgba(15, 26, 21, 0.08));
+      pointer-events: auto;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      transform: translateX(110%);
+      opacity: 0;
+      animation: toast-in 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .toast-card.is-dark {
+      filter:
+        drop-shadow(0 18px 42px rgba(0, 0, 0, 0.42))
+        drop-shadow(0 6px 14px rgba(0, 0, 0, 0.26));
+    }
+
+    .toast-card.is-leaving {
+      animation: toast-out 260ms ease forwards;
+    }
+
+    .toast-icon {
+      grid-row: 1 / span 2;
+      align-self: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: var(--type-soft);
+      color: var(--type-color);
+      flex-shrink: 0;
+    }
+
+    .toast-icon svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
+
+    .toast-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .toast-app {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .toast-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      line-height: 1;
+      font-size: 18px;
+      pointer-events: auto;
+      position: relative;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+
+    .toast-close:hover {
+      background: rgba(127, 127, 127, 0.12);
+      color: var(--text);
+    }
+
+    .toast-title {
+      grid-column: 2;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-top: 2px;
+    }
+
+    .toast-body {
+      grid-column: 2;
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .toast-progress {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 0;
+      height: 3px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(127, 127, 127, 0.12);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .toast-progress > span {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: var(--type-color);
+      transform-origin: left center;
+      animation: toast-progress 4.6s linear forwards;
+    }
+
+    @keyframes toast-in {
+      from { transform: translateX(110%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes toast-out {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(110%); opacity: 0; }
+    }
+
+    @keyframes toast-progress {
+      from { transform: scaleX(1); }
+      to { transform: scaleX(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .toast-card { animation: none; transform: none; opacity: 1; }
+      .toast-card.is-leaving { animation: none; opacity: 0; }
+      .toast-progress > span { animation: none; transform: scaleX(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="stack" id="stack" aria-live="polite" aria-relevant="additions"></div>
+
+  <script>
+    const stack = document.getElementById('stack');
+    const MAX_TOASTS = 4;
+    const AUTO_DISMISS_MS = 4600;
+
+    const ICONS = {
+      success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+      error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>',
+      warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 4.5h3.4L21 19H3L10.3 4.5z"/></svg>',
+      info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10v6"/><path d="M12 7h.01"/></svg>'
+    };
+
+    const TYPE_COLORS = {
+      success: { light: '#15803d', dark: '#4ade80' },
+      error: { light: '#b91c1c', dark: '#f87171' },
+      warning: { light: '#b45309', dark: '#fbbf24' },
+      info: { light: null, dark: null }
+    };
+
+    function hexToRgb(hex) {
+      const h = String(hex || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+      if (h.length !== 6) return null;
+      return {
+        r: parseInt(h.slice(0, 2), 16),
+        g: parseInt(h.slice(2, 4), 16),
+        b: parseInt(h.slice(4, 6), 16)
+      };
+    }
+
+    function luminance(hex) {
+      const rgb = hexToRgb(hex);
+      if (!rgb) return 1;
+      return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+    }
+
+    function mixHex(a, b, amount) {
+      const ca = hexToRgb(a);
+      const cb = hexToRgb(b);
+      if (!ca || !cb) return a;
+      const ch = (c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0');
+      return ch(ca.r + (cb.r - ca.r) * amount) +
+        ch(ca.g + (cb.g - ca.g) * amount) +
+        ch(ca.b + (cb.b - ca.b) * amount);
+    }
+
+    function dismissToast(card) {
+      if (!card || card.dataset.dismissed === '1') return;
+      card.dataset.dismissed = '1';
+      card.classList.add('is-leaving');
+      setTimeout(() => {
+        card.remove();
+        if (!stack.querySelector('.toast-card') && window.notificationApi && window.notificationApi.notifyEmpty) {
+          window.notificationApi.notifyEmpty();
+        }
+      }, 260);
+    }
+
+    function trimStack() {
+      const cards = stack.querySelectorAll('.toast-card');
+      if (cards.length <= MAX_TOASTS) return;
+      dismissToast(cards[cards.length - 1]);
+    }
+
+    function pushToast(payload) {
+      const type = ICONS[payload.type] ? payload.type : 'info';
+      const appearance = payload.appearance || {};
+      const accent = (appearance.accent || '0B8A5E').replace('#', '');
+      const bg = (appearance.bg || 'EEF5F0').replace('#', '');
+      const text = (appearance.text || '0F1A15').replace('#', '');
+      const isDark = luminance(bg) < 0.5;
+
+      const card = document.createElement('article');
+      card.className = 'toast-card' + (isDark ? ' is-dark' : '');
+      card.style.setProperty('--accent', '#' + accent.toLowerCase());
+      card.style.setProperty('--surface', isDark ? '#' + mixHex(bg, 'FFFFFF', 0.06).toLowerCase() : '#ffffff');
+      card.style.setProperty('--text', '#' + text.toLowerCase());
+      card.style.setProperty('--text-muted', '#' + mixHex(text, isDark ? 'FFFFFF' : '000000', isDark ? 0.35 : 0.55).toLowerCase());
+
+      const typeColor = TYPE_COLORS[type][isDark ? 'dark' : 'light'] || ('#' + accent.toLowerCase());
+      card.style.setProperty('--type-color', typeColor);
+      const rgb = hexToRgb(typeColor.replace('#', '')) || hexToRgb(accent);
+      card.style.setProperty('--type-soft', rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.14)` : 'rgba(11, 138, 94, 0.14)');
+
+      const title = String(payload.title || 'Macro');
+      const body = String(payload.body || '');
+      const appName = String(payload.appName || 'Macro');
+
+      card.innerHTML =
+        '<div class="toast-icon" aria-hidden="true">' + ICONS[type] + '</div>' +
+        '<div class="toast-head">' +
+          '<span class="toast-app">' + appName + '</span>' +
+          '<button type="button" class="toast-close" aria-label="Dismiss">×</button>' +
+        '</div>' +
+        '<div class="toast-title"></div>' +
+        '<div class="toast-body"></div>' +
+        '<div class="toast-progress" aria-hidden="true"><span></span></div>';
+
+      card.querySelector('.toast-title').textContent = title;
+      card.querySelector('.toast-body').textContent = body;
+
+      const closeBtn = card.querySelector('.toast-close');
+      const dismissTimer = setTimeout(() => dismissToast(card), AUTO_DISMISS_MS);
+      card._dismissTimer = dismissTimer;
+
+      const onDismiss = (event) => {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        clearTimeout(card._dismissTimer);
+        dismissToast(card);
+      };
+
+      closeBtn.addEventListener('mousedown', onDismiss);
+      closeBtn.addEventListener('click', onDismiss);
+      card.addEventListener('mouseenter', () => clearTimeout(card._dismissTimer));
+
+      stack.prepend(card);
+      trimStack();
+    }
+
+    stack.addEventListener('mousedown', (event) => {
+      const closeBtn = event.target.closest('.toast-close');
+      if (!closeBtn) return;
+      const card = closeBtn.closest('.toast-card');
+      if (!card) return;
+      clearTimeout(card._dismissTimer);
+      dismissToast(card);
+    });
+
+    if (window.notificationApi && window.notificationApi.onPush) {
+      window.notificationApi.onPush(pushToast);
+    }
+  </script>
+</body>
+</html>
