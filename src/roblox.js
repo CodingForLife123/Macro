@@ -23,6 +23,12 @@ class RobloxSession {
       hotbar: 0
     };
     this.rod = '';
+    /** Currently held fishing gear (empty when unequipped). */
+    this.equippedRod = '';
+    /** Last known fishing-gear display name (used to find its hotbar slot after moves). */
+    this.preferredRodName = '';
+    this._equippedToolAddr = 0;
+    this._equippedToolCachedAt = 0;
   }
 
   get attached() {
@@ -47,6 +53,12 @@ class RobloxSession {
     this.mem.detach();
     this.hwnd = 0;
     this.rod = '';
+    this.equippedRod = '';
+    this.preferredRodName = '';
+    this._equippedToolAddr = 0;
+    this._equippedToolCachedAt = 0;
+    this._pidCachedAt = 0;
+    this._probeOkUntil = 0;
     this.resetCaches();
   }
 
@@ -84,7 +96,13 @@ class RobloxSession {
   }
 
   ensureReady({ attemptAttach = true } = {}) {
-    const currentPid = this.findRobloxPid();
+    const now = Date.now();
+    // Avoid CreateToolhelp32Snapshot every 1–2s while already attached.
+    let currentPid = this.pid;
+    if (!this.attached || !this._pidCachedAt || now - this._pidCachedAt > 2500) {
+      currentPid = this.findRobloxPid();
+      this._pidCachedAt = now;
+    }
     if (!currentPid) {
       this.detach();
       return { ok: false, error: 'Roblox is not running.', code: 'no_roblox' };
@@ -92,10 +110,14 @@ class RobloxSession {
 
     if (this.attached && this.pid === currentPid) {
       this.hwnd = this.hwnd || win32.findBestWindowForPid(currentPid);
-      const probe = this.probeOffsets();
-      if (!probe.ok) {
-        this.detach();
-        return { ok: false, error: probe.error, code: probe.code };
+      // Soft re-probe only every few seconds — full DataModel walk stutters Roblox.
+      if (!this._probeOkUntil || now > this._probeOkUntil) {
+        const probe = this.probeOffsets();
+        if (!probe.ok) {
+          this.detach();
+          return { ok: false, error: probe.error, code: probe.code };
+        }
+        this._probeOkUntil = now + 4000;
       }
       return { ok: true };
     }
@@ -106,6 +128,8 @@ class RobloxSession {
 
     try {
       this.attach(currentPid);
+      this._pidCachedAt = now;
+      this._probeOkUntil = now + 4000;
       return { ok: true };
     } catch (err) {
       const message = err.message || String(err);
@@ -165,9 +189,13 @@ class RobloxSession {
    * DataModel can resolve on the Roblox home screen — that is NOT an offsets failure.
    */
   probeOffsets() {
-    this.cached.dataModel = 0;
-    const dm = this.getDataModel();
+    // Keep DataModel cache when possible — wiping every probe caused hitch spikes.
+    let dm = this.cached.dataModel;
     if (!isValidUserPointer(dm)) {
+      dm = this.getDataModel();
+    }
+    if (!isValidUserPointer(dm)) {
+      this.cached.dataModel = 0;
       return {
         ok: false,
         code: 'loading',
@@ -182,12 +210,14 @@ class RobloxSession {
       className = '';
     }
     if (className !== 'DataModel') {
+      this.cached.dataModel = 0;
       return {
         ok: false,
         code: 'loading',
         error: 'Roblox is still loading. Open Fisch and wait a moment.'
       };
     }
+    this.cached.dataModel = dm;
 
     let foundWorkspace = false;
     let foundPlayers = false;
@@ -328,14 +358,68 @@ class RobloxSession {
     return this.mem.findChildByName(workspace, playerName);
   }
 
+  /** Fast equip check (no hotbar walk) for activity log polling. */
+  refreshEquippedRod() {
+    const {
+      displayRodName,
+      extractFishingGearName,
+      isFishingGearText
+    } = require('./rods');
+
+    let equippedRod = '';
+    try {
+      const equipped = this.getEquippedToolName();
+      if (equipped && isFishingGearText(equipped)) {
+        equippedRod = extractFishingGearName(equipped) || displayRodName(equipped);
+      }
+    } catch {
+      // ignore
+    }
+    this.equippedRod = equippedRod;
+    if (equippedRod) this.rod = equippedRod;
+    return equippedRod;
+  }
+
   getEquippedToolName() {
+    const now = Date.now();
+    // Reuse last Tool pointer briefly — avoids re-walking a huge character tree.
+    if (
+      this._equippedToolAddr &&
+      this._equippedToolCachedAt &&
+      now - this._equippedToolCachedAt < 300
+    ) {
+      try {
+        if (this.mem.readClassName(this._equippedToolAddr) === 'Tool') {
+          const name = this.mem.readInstanceName(this._equippedToolAddr);
+          if (name) return name;
+        }
+      } catch {
+        // fall through to rescan
+      }
+      this._equippedToolAddr = 0;
+    }
+
     const character = this.getCharacterModel();
-    if (!character) return '';
-    for (const child of this.mem.readChildren(character)) {
-      if (this.mem.readClassName(child) === 'Tool') {
-        return this.mem.readInstanceName(child);
+    if (!character) {
+      this._equippedToolAddr = 0;
+      this._equippedToolCachedAt = now;
+      return '';
+    }
+
+    const children = this.mem.readChildren(character);
+    for (let i = children.length - 1; i >= 0; i--) {
+      try {
+        if (this.mem.readClassName(children[i]) === 'Tool') {
+          this._equippedToolAddr = children[i];
+          this._equippedToolCachedAt = now;
+          return this.mem.readInstanceName(children[i]);
+        }
+      } catch {
+        // ignore
       }
     }
+    this._equippedToolAddr = 0;
+    this._equippedToolCachedAt = now;
     return '';
   }
 
@@ -363,6 +447,7 @@ class RobloxSession {
 
     let fallback = '';
     let spearFallback = '';
+    let harpoonFallback = '';
 
     for (const slot of this.mem.readChildren(hotbar)) {
       if (this.mem.readClassName(slot) !== 'ImageButton') continue;
@@ -379,18 +464,254 @@ class RobloxSession {
       if (isRecognizedRodText(raw)) return displayRodName(raw);
 
       const lower = raw.toLowerCase();
+      if (!harpoonFallback && lower.includes('harpoon')) {
+        harpoonFallback = displayRodName(raw);
+      }
       if (!spearFallback && lower.includes('spear')) {
         spearFallback = displayRodName(raw);
       }
       if (!fallback) fallback = displayRodName(raw);
     }
 
-    return spearFallback || fallback;
+    return harpoonFallback || spearFallback || fallback;
+  }
+
+  readHotbarItemSlotKey(slotAddr) {
+    // Fisch labels the slot with a TextLabel (usually "1"–"9" or "0" for slot 10).
+    for (const child of this.mem.readChildren(slotAddr)) {
+      if (this.mem.readClassName(child) !== 'TextLabel') continue;
+      const key = String(this.mem.readGuiText(child) || '')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+      if (/^[0-9]$/.test(key)) return key;
+    }
+    return '';
+  }
+
+  /**
+   * Scan hotbar ItemTemplates and return fishing-gear entries with their live slot keys.
+   * Slot keys come from the UI label, so moving a rod to another hotbar slot still works.
+   * @returns {{ key: string, name: string, kind: 'rod'|'harpoon'|'spear'|'gear' }[]}
+   */
+  listHotbarFishingGear() {
+    const {
+      displayRodName,
+      extractFishingGearName,
+      isFishingGearText,
+      isHarpoonText,
+      isRecognizedRodText,
+      isSpearText,
+      normalizeRodDisplayText,
+      resolveGearType
+    } = require('./rods');
+
+    const hotbar = this.getHotbarGui();
+    if (!hotbar) return [];
+
+    const items = [];
+    for (const slot of this.mem.readChildren(hotbar)) {
+      if (this.mem.readClassName(slot) !== 'ImageButton') continue;
+      if (this.mem.readInstanceName(slot) !== 'ItemTemplate') continue;
+      const nameInst = this.mem.findChildByName(slot, 'ItemName');
+      if (!nameInst) continue;
+
+      const raw = normalizeRodDisplayText(this.mem.readGuiText(nameInst));
+      if (!raw) continue;
+      if (
+        !extractFishingGearName(raw) &&
+        !isRecognizedRodText(raw) &&
+        !isFishingGearText(raw) &&
+        !isHarpoonText(raw)
+      ) {
+        continue;
+      }
+
+      const key = this.readHotbarItemSlotKey(slot);
+      if (!key) continue;
+
+      const name = extractFishingGearName(raw) || displayRodName(raw) || raw;
+      const kind = resolveGearType(name) || (isSpearText(name) ? 'spear' : 'gear');
+
+      items.push({ key, name, kind });
+    }
+    return items;
+  }
+
+  /**
+   * Pick which hotbar key to press for fishing gear.
+   * Prefer the user's last/known rod name, then rods, then harpoons/spears.
+   * Returns null when nothing can be resolved — never guesses slot "1".
+   */
+  resolveFishingGearHotbarSlot(preferredName = '') {
+    const items = this.listHotbarFishingGear();
+    if (!items.length) return null;
+
+    const want = String(
+      preferredName || this.preferredRodName || this.rod || this.equippedRod || ''
+    )
+      .trim()
+      .toLowerCase();
+
+    if (want) {
+      const exact = items.find((item) => item.name.toLowerCase() === want);
+      if (exact) return exact;
+      const partial = items.find(
+        (item) =>
+          item.name.toLowerCase().includes(want) ||
+          want.includes(item.name.toLowerCase())
+      );
+      if (partial) return partial;
+    }
+
+    return (
+      items.find((item) => item.kind === 'rod') ||
+      items.find((item) => item.kind === 'harpoon') ||
+      items.find((item) => item.kind === 'spear') ||
+      items[0] ||
+      null
+    );
+  }
+
+  isAnythingEquipped() {
+    try {
+      return !!this.getEquippedToolName();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Equip a **rod** if hands are empty.
+   * Fisch **T** is rod-only. Harpoons are never auto-equipped (player does that).
+   * See GEAR.md.
+   */
+  ensureRodEquipped() {
+    const win32 = require('./win32');
+    const { resolveGearType } = require('./rods');
+    try {
+      this.refreshEquippedRod();
+      if (this.equippedRod) {
+        this.preferredRodName = this.equippedRod;
+        const kind = resolveGearType(this.equippedRod);
+        // Harpoon/spear already in hand = player equipped manually — never press T.
+        if (kind === 'harpoon' || kind === 'spear') {
+          return {
+            ok: true,
+            already: true,
+            rod: this.equippedRod,
+            kind,
+            method: 'manual'
+          };
+        }
+        return {
+          ok: true,
+          already: true,
+          rod: this.equippedRod,
+          kind: 'rod',
+          method: 'already'
+        };
+      }
+
+      // Something else in hand (fish, totem, etc.) — don't toggle T.
+      if (this.isAnythingEquipped()) {
+        return {
+          ok: false,
+          already: false,
+          rod: '',
+          kind: '',
+          method: 'blocked',
+          error: 'Unequip the item in your hand first, then start fishing'
+        };
+      }
+
+      // Empty hands → T equips the rod only (not harpoon).
+      this.refreshRod();
+      this.focusGame();
+      if (!win32.tapCharKey('T')) {
+        return {
+          ok: false,
+          already: false,
+          rod: this.rod || '',
+          kind: '',
+          method: 't',
+          error: 'Failed to press T to equip rod'
+        };
+      }
+      win32.sleepSync(200);
+      this.refreshRod();
+
+      const kind = resolveGearType(this.equippedRod);
+      if (this.equippedRod && kind === 'rod') {
+        this.preferredRodName = this.equippedRod;
+        return {
+          ok: true,
+          already: false,
+          rod: this.equippedRod,
+          kind: 'rod',
+          method: 't'
+        };
+      }
+
+      // T should not pull a harpoon; if it did, still don't keep retrying.
+      if (this.equippedRod && kind === 'harpoon') {
+        return {
+          ok: true,
+          already: false,
+          rod: this.equippedRod,
+          kind: 'harpoon',
+          method: 'manual',
+          error: ''
+        };
+      }
+
+      return {
+        ok: false,
+        already: false,
+        rod: this.rod || '',
+        kind: kind || '',
+        method: 't',
+        error:
+          'Pressed T but no rod equipped — select a rod in Fisch first (harpoons are manual)'
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        already: false,
+        rod: '',
+        kind: '',
+        method: '',
+        error: err && err.message ? err.message : String(err)
+      };
+    }
   }
 
   refreshRod() {
-    const rod = this.scanHotbarRod();
-    if (rod) this.rod = rod;
+    const {
+      displayRodName,
+      extractFishingGearName,
+      isFishingGearText
+    } = require('./rods');
+
+    let equippedRod = '';
+    try {
+      const equipped = this.getEquippedToolName();
+      if (equipped && isFishingGearText(equipped)) {
+        equippedRod = extractFishingGearName(equipped) || displayRodName(equipped);
+      }
+    } catch {
+      // ignore
+    }
+    this.equippedRod = equippedRod;
+
+    const scanned = this.scanHotbarRod();
+    if (equippedRod) {
+      this.rod = equippedRod;
+      this.preferredRodName = equippedRod;
+    } else if (scanned) {
+      this.rod = scanned;
+      if (!this.preferredRodName) this.preferredRodName = scanned;
+    }
+
     return this.rod;
   }
 

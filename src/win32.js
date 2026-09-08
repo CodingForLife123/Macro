@@ -67,6 +67,28 @@ const EnumProcessModulesEx = psapi.func(
   'int EnumProcessModulesEx(uintptr hProcess, void *lphModule, uint32 cb, uint32 *lpcbNeeded, uint32 dwFilterFlag)'
 );
 
+const gdi32 = koffi.load('gdi32.dll');
+
+const GetDC = user32.func('uintptr GetDC(uintptr hWnd)');
+const ReleaseDC = user32.func('int ReleaseDC(uintptr hWnd, uintptr hDC)');
+const CreateCompatibleDC = gdi32.func('uintptr CreateCompatibleDC(uintptr hdc)');
+const CreateCompatibleBitmap = gdi32.func(
+  'uintptr CreateCompatibleBitmap(uintptr hdc, int cx, int cy)'
+);
+const SelectObject = gdi32.func('uintptr SelectObject(uintptr hdc, uintptr h)');
+const DeleteObject = gdi32.func('int DeleteObject(uintptr ho)');
+const DeleteDC = gdi32.func('int DeleteDC(uintptr hdc)');
+const BitBlt = gdi32.func(
+  'int BitBlt(uintptr hdc, int x, int y, int cx, int cy, uintptr hdcSrc, int x1, int y1, uint32 rop)'
+);
+const GetDIBits = gdi32.func(
+  'int GetDIBits(uintptr hdc, uintptr hbm, uint32 start, uint32 cLines, void *lpvBits, void *lpbmi, uint32 usage)'
+);
+const GetPixel = gdi32.func('uint32 GetPixel(uintptr hdc, int x, int y)');
+
+const SRCCOPY = 0x00cc0020;
+const DIB_RGB_COLORS = 0;
+
 const mouse_event = user32.func(
   'void mouse_event(uint32 dwFlags, uint32 dx, uint32 dy, uint32 dwData, uintptr dwExtraInfo)'
 );
@@ -300,6 +322,134 @@ function clientToScreen(hwnd, x, y) {
   return { x: pt.readInt32LE(0), y: pt.readInt32LE(4) };
 }
 
+function getClientSize(hwnd) {
+  if (!hwnd) return null;
+  const rectBuf = Buffer.alloc(16);
+  if (!GetClientRect(hwnd, rectBuf)) return null;
+  const width = Math.max(0, rectBuf.readInt32LE(8) - rectBuf.readInt32LE(0));
+  const height = Math.max(0, rectBuf.readInt32LE(12) - rectBuf.readInt32LE(4));
+  if (width < 64 || height < 64) return null;
+  return { width, height };
+}
+
+/**
+ * Capture a client rectangle as BGRA pixels (top-down).
+ * @returns {{ width: number, height: number, data: Buffer } | null}
+ */
+function captureClientRect(hwnd, clientX, clientY, width, height) {
+  if (!hwnd || width < 1 || height < 1) return null;
+  const origin = clientToScreen(hwnd, clientX | 0, clientY | 0);
+  if (!origin) return null;
+
+  const screenDc = GetDC(0);
+  if (!screenDc) return null;
+
+  let memDc = 0;
+  let bmp = 0;
+  try {
+    memDc = CreateCompatibleDC(screenDc);
+    if (!memDc) return null;
+    bmp = CreateCompatibleBitmap(screenDc, width, height);
+    if (!bmp) return null;
+    SelectObject(memDc, bmp);
+    if (!BitBlt(memDc, 0, 0, width, height, screenDc, origin.x, origin.y, SRCCOPY)) {
+      return null;
+    }
+
+    // BITMAPINFOHEADER (40 bytes) + optional color table; we use 32bpp BI_RGB.
+    const bmi = Buffer.alloc(40 + 4);
+    bmi.writeUInt32LE(40, 0); // biSize
+    bmi.writeInt32LE(width, 4);
+    bmi.writeInt32LE(-height, 8); // top-down
+    bmi.writeUInt16LE(1, 12); // planes
+    bmi.writeUInt16LE(32, 14); // bit count
+    bmi.writeUInt32LE(0, 16); // BI_RGB
+
+    const data = Buffer.alloc(width * height * 4);
+    const ok = GetDIBits(memDc, bmp, 0, height, data, bmi, DIB_RGB_COLORS);
+    if (!ok) return null;
+    return { width, height, data };
+  } finally {
+    if (bmp) DeleteObject(bmp);
+    if (memDc) DeleteDC(memDc);
+    ReleaseDC(0, screenDc);
+  }
+}
+
+/**
+ * Sample multiple client-relative pixels (COLORREF 0x00BBGGRR).
+ * Small regions use BitBlt; large spans use GetPixel on one DC so we never
+ * capture half the desktop (that stalls DWM / Roblox / the whole PC).
+ */
+function sampleClientPixels(hwnd, points) {
+  if (!hwnd || !points || !points.length) return [];
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [cx, cy] of points) {
+    if (cx < minX) minX = cx;
+    if (cy < minY) minY = cy;
+    if (cx > maxX) maxX = cx;
+    if (cy > maxY) maxY = cy;
+  }
+  minX = Math.max(0, minX | 0);
+  minY = Math.max(0, minY | 0);
+  maxX = maxX | 0;
+  maxY = maxY | 0;
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  if (width < 1 || height < 1) return points.map(() => null);
+
+  // Prefer tiny BitBlts only. Anything bigger fights the compositor.
+  if (width * height <= 80_000) {
+    const shot = captureClientRect(hwnd, minX, minY, width, height);
+    if (!shot) return points.map(() => null);
+    return points.map(([cx, cy]) => {
+      const x = (cx | 0) - minX;
+      const y = (cy | 0) - minY;
+      if (x < 0 || y < 0 || x >= shot.width || y >= shot.height) return null;
+      const off = (y * shot.width + x) * 4;
+      const b = shot.data[off];
+      const g = shot.data[off + 1];
+      const r = shot.data[off + 2];
+      return ((b & 0xff) << 16) | ((g & 0xff) << 8) | (r & 0xff);
+    });
+  }
+
+  const origin = clientToScreen(hwnd, 0, 0);
+  if (!origin) return points.map(() => null);
+  const hdc = GetDC(0);
+  if (!hdc) return points.map(() => null);
+  try {
+    return points.map(([cx, cy]) => {
+      const color = GetPixel(hdc, (origin.x + (cx | 0)) | 0, (origin.y + (cy | 0)) | 0);
+      if (color === 0xffffffff) return null;
+      return color >>> 0;
+    });
+  } finally {
+    ReleaseDC(0, hdc);
+  }
+}
+
+/**
+ * Sample a client-relative pixel via the screen DC (more reliable for GPU games).
+ * COLORREF is 0x00BBGGRR. Returns null on failure.
+ */
+function getClientPixel(hwnd, clientX, clientY) {
+  return sampleClientPixels(hwnd, [[clientX, clientY]])[0] ?? null;
+}
+
+function colorToRgb(color) {
+  const c = color >>> 0;
+  return {
+    r: c & 0xff,
+    g: (c >> 8) & 0xff,
+    b: (c >> 16) & 0xff
+  };
+}
+
 function clickScreen(x, y) {
   SetCursorPos(Math.round(x), Math.round(y));
   mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
@@ -384,9 +534,15 @@ module.exports = {
   clientToScreen,
   clickScreen,
   clickClient,
+  getClientSize,
+  getClientPixel,
+  sampleClientPixels,
+  captureClientRect,
+  colorToRgb,
   getCursorPos,
   isKeyDown,
   reliableScreenClick,
+  sleepSync,
   VK_RBUTTON: 0x02,
   ROBLOX_EXE: 'RobloxPlayerBeta.exe'
 };

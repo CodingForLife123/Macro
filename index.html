@@ -57,13 +57,13 @@
 
         <div class="scroll-container">
           <!-- Status Card -->
-          <div class="card card-accent" aria-live="polite">
+          <div class="card card-accent status-card" aria-live="polite">
             <div class="status-grid">
-              <div>
+              <div class="status-equipped">
                 <div class="status-label">Equipped</div>
                 <div class="status-value" id="rod-equipped">Waiting for Roblox…</div>
               </div>
-              <div style="text-align: right;">
+              <div class="status-phase">
                 <div class="status-label">Status</div>
                 <div class="status-badge">
                   <span class="status-dot waiting" id="status-dot" aria-hidden="true"></span>
@@ -71,30 +71,38 @@
                 </div>
               </div>
             </div>
+            <div class="status-stats" aria-label="Session stats">
+              <div class="status-stat">
+                <span class="status-stat-label">Caught</span>
+                <strong class="status-stat-value" id="metric-caught">0</strong>
+              </div>
+              <div class="status-stat">
+                <span class="status-stat-label">Lost</span>
+                <strong class="status-stat-value is-lost" id="metric-lost">0</strong>
+              </div>
+              <div class="status-stat">
+                <span class="status-stat-label">Success</span>
+                <strong class="status-stat-value is-success" id="metric-success">0.0%</strong>
+              </div>
+            </div>
             <div class="status-footer">
               <span>Power <strong id="power-value">---</strong></span>
               <span>Progress <strong id="progress-value">---</strong></span>
             </div>
           </div>
-          
-          <!-- Metrics -->
-          <div class="metrics">
-            <div class="metric primary">
-              <div class="metric-label">Caught</div>
-              <div class="metric-value" id="metric-caught">0</div>
-            </div>
-            <div class="metric danger">
-              <div class="metric-label">Lost</div>
-              <div class="metric-value" id="metric-lost">0</div>
-            </div>
-            <div class="metric success">
-              <div class="metric-label">Success</div>
-              <div class="metric-value" id="metric-success">0.0%</div>
-            </div>
+
+          <!-- Activity log -->
+          <div class="section-header section-header--first">
+            <h2>Activity</h2>
+            <button type="button" class="link" id="activity-clear">Clear</button>
+          </div>
+          <div class="card activity-card">
+            <div class="activity-log" id="activity-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+            <p class="activity-empty" id="activity-empty">Waiting for activity…</p>
           </div>
 
           <!-- Casting -->
-          <div class="section-header section-header--first">
+          <div class="section-header">
             <h2>Casting</h2>
           </div>
           <div class="card cast-card">
@@ -1033,6 +1041,274 @@
         };
       }
 
+      function formatActivityTime(date) {
+        const d = date instanceof Date ? date : new Date();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return hh + ':' + mm + ':' + ss;
+      }
+
+      function describePhase(phase) {
+        const p = String(phase || 'OFF');
+        const map = {
+          OFF: 'Macro stopped',
+          CASTING: 'Casting…',
+          CASTED: 'Casted',
+          SHAKE: 'Shaking…',
+          FISHING: 'Reeling…',
+          TRANQUILITY: 'Tranquility minigame…',
+          LULLABY: 'Lullaby minigame…',
+          BELLONA: 'Bellona minigame…',
+          DONE: 'Cycle finished',
+          FAILED: 'Cycle failed'
+        };
+        if (map[p]) return map[p];
+        if (p.indexOf('APPRAISE') === 0) {
+          return 'Appraise: ' + (p.replace(/^APPRAISE\s*/, '') || 'running');
+        }
+        return p;
+      }
+
+      const activityState = {
+        phase: '',
+        attached: null,
+        rod: '',
+        equippedRod: null,
+        equippedKind: '',
+        casting: null,
+        caught: null,
+        lost: null,
+        error: '',
+        appraiseStatus: '',
+        running: null
+      };
+
+      function gearTypeLabel(kind, name) {
+        const k = String(kind || '').toLowerCase();
+        if (k === 'harpoon' || /\bharpoon\b/i.test(name || '')) return 'harpoon';
+        if (k === 'spear' || /\bspear\b/i.test(name || '')) return 'spear';
+        return 'rod';
+      }
+
+      function isWaitingRodText(text) {
+        const t = String(text || '').trim();
+        return !t || /^waiting\b/i.test(t);
+      }
+
+      function appendActivity(message, level) {
+        const text = String(message || '').trim();
+        if (!text) return;
+        const logEl = document.getElementById('activity-log');
+        const emptyEl = document.getElementById('activity-empty');
+        if (!logEl) return;
+
+        const line = document.createElement('div');
+        line.className = 'activity-line is-' + (level || 'info');
+        line.innerHTML =
+          '<span class="activity-time"></span><span class="activity-msg"></span>';
+        line.querySelector('.activity-time').textContent = formatActivityTime(new Date());
+        line.querySelector('.activity-msg').textContent = text;
+        logEl.appendChild(line);
+
+        while (logEl.children.length > 100) {
+          logEl.removeChild(logEl.firstChild);
+        }
+
+        if (emptyEl) emptyEl.style.display = 'none';
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function clearActivityLog() {
+        const logEl = document.getElementById('activity-log');
+        const emptyEl = document.getElementById('activity-empty');
+        if (logEl) logEl.innerHTML = '';
+        if (emptyEl) emptyEl.style.display = '';
+        activityState.phase = '';
+        activityState.attached = null;
+        activityState.rod = '';
+        activityState.equippedRod = null;
+        activityState.equippedKind = '';
+        activityState.casting = null;
+        activityState.caught = null;
+        activityState.lost = null;
+        activityState.error = '';
+        activityState.appraiseStatus = '';
+        activityState.running = null;
+        appendActivity('Log cleared', 'info');
+      }
+
+      function syncActivityFromStatus(status) {
+        if (!status) return;
+
+        if (activityState.attached === null) {
+          activityState.attached = !!status.attached;
+          activityState.caught = Number(status.caught) || 0;
+          activityState.lost = Number(status.lost) || 0;
+          activityState.phase = String(status.phase || 'OFF');
+          activityState.rod = String(status.rod || '');
+          activityState.equippedRod = String(status.equippedRod || '');
+          activityState.equippedKind = gearTypeLabel(
+            status.equippedKind,
+            activityState.equippedRod
+          );
+          activityState.casting = !!status.playerCasting;
+          activityState.running = !!status.running;
+          if (status.attached) {
+            appendActivity('Connected to Roblox', 'ok');
+            if (activityState.equippedRod) {
+              appendActivity(
+                'Equipped ' + activityState.equippedKind + ': ' + activityState.equippedRod,
+                'ok'
+              );
+            } else if (activityState.rod && !isWaitingRodText(activityState.rod)) {
+              const hotbarKind = gearTypeLabel(status.rodKind, activityState.rod);
+              appendActivity(
+                hotbarKind.charAt(0).toUpperCase() +
+                  hotbarKind.slice(1) +
+                  ' in hotbar: ' +
+                  activityState.rod,
+                'info'
+              );
+            }
+            if (activityState.casting) {
+              const castRod =
+                activityState.equippedRod ||
+                (!isWaitingRodText(activityState.rod) ? activityState.rod : 'rod');
+              appendActivity('Casting ' + castRod + '…', 'ok');
+            }
+          } else {
+            appendActivity('Waiting for Roblox…', 'warn');
+          }
+          return;
+        }
+
+        if (!!status.attached !== activityState.attached) {
+          activityState.attached = !!status.attached;
+          if (!status.attached) {
+            activityState.equippedRod = '';
+            activityState.equippedKind = '';
+            activityState.rod = '';
+            activityState.casting = false;
+          }
+          appendActivity(
+            status.attached ? 'Attached to Roblox' : 'Lost Roblox connection',
+            status.attached ? 'ok' : 'warn'
+          );
+        }
+
+        const equippedRod = String(status.equippedRod || '');
+        const equippedKind = gearTypeLabel(status.equippedKind, equippedRod);
+        if (activityState.equippedRod === null) {
+          activityState.equippedRod = equippedRod;
+          activityState.equippedKind = equippedKind;
+        } else if (equippedRod !== activityState.equippedRod) {
+          const prev = activityState.equippedRod;
+          const prevKind = activityState.equippedKind || gearTypeLabel('', prev);
+          activityState.equippedRod = equippedRod;
+          activityState.equippedKind = equippedRod ? equippedKind : '';
+          if (equippedRod) {
+            if (prev) {
+              appendActivity(
+                'Switched ' + prevKind + ' → ' + equippedKind + ': ' + equippedRod,
+                'ok'
+              );
+            } else {
+              appendActivity('Equipped ' + equippedKind + ': ' + equippedRod, 'ok');
+            }
+          } else if (prev) {
+            appendActivity('Unequipped ' + prevKind + ': ' + prev, 'info');
+          }
+        }
+
+        const rod = String(status.rod || '');
+        if (rod && rod !== activityState.rod && !isWaitingRodText(rod) && !equippedRod) {
+          // Hotbar-only discovery while nothing is in hand
+          activityState.rod = rod;
+          const hotbarKind = gearTypeLabel(status.rodKind, rod);
+          appendActivity(
+            hotbarKind.charAt(0).toUpperCase() +
+              hotbarKind.slice(1) +
+              ' in hotbar: ' +
+              rod,
+            'info'
+          );
+        } else if (rod) {
+          activityState.rod = rod;
+        }
+
+        const casting = !!status.playerCasting;
+        if (activityState.casting === null) {
+          activityState.casting = casting;
+          // Initial snapshot already logged casting above when attached
+        } else if (casting !== activityState.casting) {
+          activityState.casting = casting;
+          if (casting) {
+            const castRod =
+              String(status.equippedRod || '').trim() ||
+              (!isWaitingRodText(status.rod) ? String(status.rod || '').trim() : '') ||
+              'rod';
+            appendActivity('Casting ' + castRod + '…', 'ok');
+          }
+        }
+
+        if (status.harpoonPullStarted) {
+          appendActivity('Harpoon pull…', 'ok');
+        }
+
+        const phase = String(status.phase || 'OFF');
+        if (phase !== activityState.phase) {
+          activityState.phase = phase;
+          // Casting is logged via playerCasting above
+          if (phase !== 'CASTING' && phase !== 'CASTED') {
+            const level =
+              phase === 'FAILED' ? 'error' :
+              phase === 'OFF' || phase === 'DONE' ? 'info' :
+              'ok';
+            appendActivity(describePhase(phase), level);
+          }
+        }
+
+        const caught = Number(status.caught) || 0;
+        if (activityState.caught != null && caught > activityState.caught) {
+          const via = status.lastCatchSource === 'harpoon' ? ' (harpoon)' : '';
+          appendActivity(
+            'Fish caught' + via + ' (+' + (caught - activityState.caught) + ')',
+            'ok'
+          );
+        }
+        activityState.caught = caught;
+
+        const lost = Number(status.lost) || 0;
+        if (activityState.lost != null && lost > activityState.lost) {
+          appendActivity('Fish lost (+' + (lost - activityState.lost) + ')', 'warn');
+        }
+        activityState.lost = lost;
+
+        const err = String(status.error || '').trim();
+        if (err && err !== activityState.error) {
+          activityState.error = err;
+          appendActivity(err, 'error');
+        } else if (!err) {
+          activityState.error = '';
+        }
+
+        const appraiseStatus = String(status.appraiseStatus || '').trim();
+        if (
+          appraiseStatus &&
+          appraiseStatus !== activityState.appraiseStatus &&
+          !/^ready\.?$/i.test(appraiseStatus)
+        ) {
+          activityState.appraiseStatus = appraiseStatus;
+          appendActivity('Appraise: ' + appraiseStatus, 'info');
+        }
+      }
+
+      const activityClearBtn = document.getElementById('activity-clear');
+      if (activityClearBtn) {
+        activityClearBtn.addEventListener('click', () => clearActivityLog());
+      }
+
       function applyMacroStatus(status) {
         if (!status) return;
         const rodEl = document.getElementById('rod-equipped');
@@ -1044,7 +1320,15 @@
         const lostEl = document.getElementById('metric-lost');
         const successEl = document.getElementById('metric-success');
 
-        if (rodEl) rodEl.textContent = status.rod || (status.attached ? 'Attached' : 'Waiting for Roblox…');
+        if (rodEl) {
+          const equipped = String(status.equippedRod || '').trim();
+          if (equipped) {
+            rodEl.textContent = equipped;
+          } else {
+            rodEl.textContent =
+              status.rod || (status.attached ? 'Attached' : 'Waiting for Roblox…');
+          }
+        }
         if (statusEl) statusEl.textContent = status.phase || 'OFF';
         if (powerEl) {
           if (status.power && status.power !== '---' && status.castTarget != null) {
@@ -1069,6 +1353,8 @@
         if (appraiseStatus && status.appraiseStatus) {
           appraiseStatus.textContent = 'Status: ' + status.appraiseStatus;
         }
+
+        syncActivityFromStatus(status);
       }
 
       if (window.macro) {

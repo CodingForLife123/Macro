@@ -8,21 +8,41 @@ const { RobloxSession, FISCH_PLACE_ID } = require('./roblox');
 const { FishingMacro, defaultSettings } = require('./fish');
 const { toFriendlyError } = require('./friendlyErrors');
 const { refreshOffsetsFromRemote } = require('./offsets');
+const { log } = require('./logger');
+const { resolveGearType } = require('./rods');
+const { HarpoonCatchWatcher } = require('./harpoon');
 
 class MacroEngine {
   constructor({ onStatus, isAutoFixEnabled } = {}) {
     this.session = new RobloxSession();
     this.macro = new FishingMacro(this.session);
+    this.harpoonWatcher = new HarpoonCatchWatcher(this.session);
     this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
     this.isAutoFixEnabled =
       typeof isAutoFixEnabled === 'function' ? isAutoFixEnabled : () => true;
     this.tickTimer = null;
     this.watchTimer = null;
+    this.castWatchTimer = null;
     this.lastError = '';
     this.running = false;
     this.loadingFailStreak = 0;
     /** @type {Promise<object> | null} */
     this.offsetHealPromise = null;
+    this._lastLoggedPhase = '';
+    this._lastLoggedAttach = null;
+    this._lastLoggedRod = '';
+    this._lastLoggedEquippedRod = '';
+    this._lastLoggedEquippedKind = '';
+    this._lastLoggedCaught = 0;
+    this._lastLoggedLost = 0;
+    this._lastLoggedError = '';
+    this._lastLoggedCasting = null;
+    this._lastCatchSource = '';
+    this._lastLoggedHarpoonPull = false;
+    this._lastEquipPollAt = 0;
+    this._lastHarpoonPollAt = 0;
+    this._lastCastPollAt = 0;
+    this._lastActivityTickAt = 0;
   }
 
   get settings() {
@@ -31,23 +51,128 @@ class MacroEngine {
 
   setSettings(partial) {
     this.macro.applySettings(partial || {});
+    if (partial && (partial.cast_mode != null || partial.cast_power_custom != null)) {
+      const mode = this.macro.settings.cast_mode;
+      const power = this.macro.settings.cast_power_custom;
+      log.info(`Cast settings: mode=${mode} power=${power}%`);
+    }
     this.emitStatus();
   }
 
   emitStatus(extra = {}) {
     const snap = this.macro.getStatusSnapshot();
-    this.onStatus({
+    const harpoonCaught = this.harpoonWatcher.caughtCount || 0;
+    const rodCaught = Number(snap.caught) || 0;
+    const status = {
       ...snap,
+      rodCaught,
+      harpoonCaught,
+      caught: rodCaught + harpoonCaught,
+      harpoonPullActive: this.harpoonWatcher.phase === 'pull',
       error: this.lastError,
       running: this.running,
       fischPlaceId: FISCH_PLACE_ID,
       ...extra
-    });
+    };
+    this.onStatus(status);
+    this.logStatusChanges(status, extra);
+  }
+
+  logStatusChanges(snap, extra = {}) {
+    const attached = !!snap.attached;
+    if (this._lastLoggedAttach !== attached) {
+      this._lastLoggedAttach = attached;
+      if (attached) {
+        log.info(`Roblox attached (pid ${snap.pid || '?'})`);
+      } else {
+        const code = extra.attachCode ? ` (${extra.attachCode})` : '';
+        log.warn(`Roblox not attached${code}`);
+      }
+    }
+
+    const equippedRod = String(snap.equippedRod || '');
+    const equippedKind =
+      String(snap.equippedKind || '') || resolveGearType(equippedRod) || 'rod';
+    if (equippedRod !== this._lastLoggedEquippedRod) {
+      const prev = this._lastLoggedEquippedRod;
+      const prevKind = this._lastLoggedEquippedKind || resolveGearType(prev) || 'rod';
+      this._lastLoggedEquippedRod = equippedRod;
+      this._lastLoggedEquippedKind = equippedRod ? equippedKind : '';
+      if (equippedRod) {
+        if (prev) {
+          log.info(`Switched ${prevKind} → ${equippedKind}: ${equippedRod}`);
+        } else {
+          log.info(`Equipped ${equippedKind}: ${equippedRod}`);
+        }
+      } else if (prev) {
+        log.info(`Unequipped ${prevKind} (${prev})`);
+      }
+    }
+
+    const rod = String(snap.rod || '');
+    if (rod && rod !== this._lastLoggedRod && rod.indexOf('Waiting') !== 0) {
+      this._lastLoggedRod = rod;
+    }
+
+    const casting = !!snap.playerCasting;
+    if (this._lastLoggedCasting === null) {
+      this._lastLoggedCasting = casting;
+    } else if (this._lastLoggedCasting !== casting) {
+      this._lastLoggedCasting = casting;
+      if (casting) {
+        const castRod =
+          String(snap.equippedRod || '').trim() ||
+          (rod && rod.indexOf('Waiting') !== 0 ? rod : 'rod');
+        log.info(`Casting ${castRod}`);
+      }
+    }
+
+    if (extra.harpoonPullStarted) {
+      log.info('Harpoon pull started');
+    }
+
+    const phase = String(snap.rawPhase || snap.phase || 'OFF');
+    if (phase !== this._lastLoggedPhase) {
+      this._lastLoggedPhase = phase;
+      // Casting is logged via playerCasting above — skip noisy CASTING/CASTED lines
+      if (phase !== 'CASTING' && phase !== 'CASTED') {
+        log.info(`Phase → ${phase}`);
+      }
+    }
+
+    const caught = Number(snap.caught) || 0;
+    if (caught > this._lastLoggedCaught) {
+      const via =
+        extra.lastCatchSource === 'harpoon' || this._lastCatchSource === 'harpoon'
+          ? ' with harpoon'
+          : '';
+      log.info(`Fish caught${via} (total ${caught})`);
+      this._lastLoggedCaught = caught;
+      this._lastCatchSource = '';
+    } else {
+      this._lastLoggedCaught = caught;
+    }
+
+    const lost = Number(snap.lost) || 0;
+    if (lost > this._lastLoggedLost) {
+      log.warn(`Fish lost (total ${lost})`);
+      this._lastLoggedLost = lost;
+    } else {
+      this._lastLoggedLost = lost;
+    }
+
+    if (this.lastError && this.lastError !== this._lastLoggedError) {
+      this._lastLoggedError = this.lastError;
+      log.error(this.lastError);
+    } else if (!this.lastError) {
+      this._lastLoggedError = '';
+    }
   }
 
   startWatchers() {
     if (this.watchTimer) return;
-    this.watchTimer = setInterval(() => this.watchTick(), 1500);
+    this.watchTimer = setInterval(() => this.watchTick(), 2000);
+    this.castWatchTimer = setInterval(() => this.activityWatchTick(), 100);
     this.watchTick();
   }
 
@@ -55,6 +180,113 @@ class MacroEngine {
     if (this.watchTimer) {
       clearInterval(this.watchTimer);
       this.watchTimer = null;
+    }
+    if (this.castWatchTimer) {
+      clearInterval(this.castWatchTimer);
+      this.castWatchTimer = null;
+    }
+  }
+
+  /**
+   * Fast poll for equip + casting + harpoon catch so the activity log stays responsive.
+   * Heavy attach/hotbar work stays on the slower watchTick.
+   */
+  activityWatchTick() {
+    if (!this.session.attached) return;
+    try {
+      const now = Date.now();
+      // When fishing macro is OFF, poll far less — constant RPM stuttered Roblox/PC.
+      const idle = !this.running;
+      const gearKindEarly = resolveGearType(String(this.session.equippedRod || ''));
+      // Harpoon catch log should feel instant even when Status is OFF.
+      const tickGap = gearKindEarly === 'harpoon' ? 120 : idle ? 400 : 100;
+      if (this._lastActivityTickAt && now - this._lastActivityTickAt < tickGap) {
+        return;
+      }
+      this._lastActivityTickAt = now;
+
+      const prevEquipped = String(this._lastLoggedEquippedRod || '');
+
+      const equipGap = gearKindEarly === 'harpoon' ? 250 : idle ? 600 : 300;
+      if (!this._lastEquipPollAt || now - this._lastEquipPollAt >= equipGap) {
+        this._lastEquipPollAt = now;
+        this.session.refreshEquippedRod();
+      }
+
+      const equipped = String(this.session.equippedRod || '');
+      const gearKind = resolveGearType(equipped);
+      if (equipped !== prevEquipped) {
+        this.macro.suppressCastProbeAfterEquip();
+        if (gearKind !== 'harpoon') {
+          this.harpoonWatcher.resetSession();
+        } else {
+          this.harpoonWatcher.wake();
+        }
+      }
+
+      let probe = { casting: false, power: '' };
+      const castGap =
+        gearKind === 'harpoon'
+          ? 100
+          : idle
+            ? 350
+            : this._lastLoggedCasting
+              ? 75
+              : 120;
+      if (!this._lastCastPollAt || now - this._lastCastPollAt >= castGap) {
+        this._lastCastPollAt = now;
+        probe = this.macro.probePlayerCasting();
+      } else {
+        probe = {
+          casting: !!this._lastLoggedCasting,
+          power: ''
+        };
+      }
+
+      const casting = !!probe.casting;
+      if (gearKind === 'harpoon' && casting) {
+        this.harpoonWatcher.wake();
+      }
+
+      const equippedChanged = equipped !== this._lastLoggedEquippedRod;
+      const castingChanged =
+        this._lastLoggedCasting !== null && casting !== this._lastLoggedCasting;
+
+      let harpoonCatch = false;
+      let harpoonPull = false;
+      let harpoonPullStarted = false;
+      const harpoonGap =
+        this.harpoonWatcher.phase === 'pull' ? 80 : casting ? 100 : 200;
+      if (
+        gearKind === 'harpoon' &&
+        (!this._lastHarpoonPollAt || now - this._lastHarpoonPollAt >= harpoonGap)
+      ) {
+        this._lastHarpoonPollAt = now;
+        const h = this.harpoonWatcher.tick();
+        harpoonCatch = !!h.caught;
+        harpoonPull = !!h.active;
+        harpoonPullStarted = !!h.started;
+        if (harpoonCatch) this._lastCatchSource = 'harpoon';
+      } else if (gearKind === 'harpoon') {
+        harpoonPull = this.harpoonWatcher.phase === 'pull';
+      }
+
+      if (harpoonPullStarted) this._lastLoggedHarpoonPull = true;
+      if (!harpoonPull) this._lastLoggedHarpoonPull = false;
+
+      if (!equippedChanged && !castingChanged && !harpoonCatch && !harpoonPullStarted) {
+        return;
+      }
+
+      this.emitStatus({
+        playerCasting: casting,
+        power: probe.power !== '' ? probe.power + '%' : '---',
+        harpoonPullActive: harpoonPull,
+        lastCatchSource: harpoonCatch ? 'harpoon' : undefined,
+        harpoonPullStarted: harpoonPullStarted || undefined
+      });
+    } catch {
+      // ignore probe failures while idle
     }
   }
 
@@ -245,10 +477,24 @@ class MacroEngine {
     this.lastError = '';
     this.session.focusGame();
     this.session.refreshRod();
+    const equip = this.session.ensureRodEquipped();
+    if (equip.ok && !equip.already && equip.method === 't') {
+      log.info(`Equipped rod: ${equip.rod || 'rod'} (T)`);
+    } else if (equip.ok && equip.already && equip.kind === 'harpoon') {
+      log.info(`Harpoon already equipped (manual): ${equip.rod}`);
+    } else if (!equip.ok) {
+      log.warn(
+        equip.error ||
+          'Could not auto-equip rod — press T in Fisch, or equip a harpoon manually'
+      );
+    }
     this.macro.startCycle();
 
     this.running = true;
     this.startTickLoop();
+    log.info(
+      `Fishing started (cast ${this.macro.settings.cast_mode}/${this.macro.settings.cast_power_custom}%)`
+    );
     this.emitStatus();
     return { ok: true };
   }
@@ -294,6 +540,7 @@ class MacroEngine {
 
     this.running = true;
     this.startTickLoop();
+    log.info('Appraise started');
     this.emitStatus();
     return { ok: true };
   }
@@ -306,6 +553,7 @@ class MacroEngine {
     }
     this.running = false;
     this.stopTickLoop();
+    log.info(`Stopped (${phase})`);
     this.emitStatus();
     return { ok: true };
   }

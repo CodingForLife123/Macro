@@ -23,8 +23,12 @@ const {
   disposeNotificationHost
 } = require('./src/notificationHost');
 const { checkForUpdates, downloadUpdate, installUpdate, initAppUpdater } = require('./src/updater');
+const { log } = require('./src/logger');
 
 app.commandLine.appendSwitch('disable-http-cache');
+// Reduce GPU/compositor contention with Roblox (common Electron + game stutter).
+app.commandLine.appendSwitch('disable-gpu');
+app.disableHardwareAcceleration();
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -400,6 +404,7 @@ function registerMacroHotkeys() {
         cast_mode: 'custom',
         cast_power_custom: prefs.castPower
       });
+      log.info('Hotkey: start_macro');
       eng.toggle();
     },
     start_appraise: () => {
@@ -410,13 +415,16 @@ function registerMacroHotkeys() {
         cast_mode: 'custom',
         cast_power_custom: prefs.castPower
       });
+      log.info('Hotkey: start_appraise');
       eng.toggleAppraise();
     },
     fix_roblox: () => {
       if (!ensureMacroAllowed().ok) return;
+      log.info('Hotkey: fix_roblox');
       getEngine().fixRoblox().catch(() => {});
     },
     reload: () => {
+      log.info('Hotkey: reload');
       reloadMacroUi();
     },
     spear_assist: () => {
@@ -452,8 +460,14 @@ function unlockMacroRuntime() {
   const eng = getEngine();
   applyPersistedAppraiseSettings(eng);
   eng.startWatchers();
-  registerMacroHotkeys();
+  const hk = registerMacroHotkeys();
   eng.emitStatus();
+  log.info(`Macro ready (v${app.getVersion()})`);
+  if (hk && hk.errors && hk.errors.length) {
+    hk.errors.forEach((e) => log.warn(`Hotkey: ${e}`));
+  } else {
+    log.info('Hotkeys registered');
+  }
   // Quiet startup check — if Roblox already updated, pull fresh offsets early.
   if (readPreferences().autoFixOffsets !== false) {
     eng.scheduleOffsetHeal({ force: false, reason: 'startup' });
@@ -829,6 +843,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    log.info(`Starting Macro ${app.getVersion()} (${app.isPackaged ? 'packaged' : 'dev'})`);
     setNotificationsEnabledGetter(() => readPreferences().notificationsEnabled);
     initNotificationHost(() => readAppearance());
     initAppUpdater(sendUpdateEvent);

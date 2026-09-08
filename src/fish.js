@@ -15,7 +15,8 @@ const {
   isLullabyRodText,
   isBellonaRodText,
   isRequiemRodText,
-  resolveRodKind
+  resolveRodKind,
+  resolveGearType
 } = require('./rods');
 const { AppraiseController } = require('./appraise');
 
@@ -58,6 +59,15 @@ class FishingMacro {
     this.controller = new FishingController(this);
     this.appraise = new AppraiseController(this);
     this.state = this.createState();
+    /** Idle cast detector — rise-based so equip spam doesn't fake casts. */
+    this._castProbeLastPercent = null;
+    this._castProbeBaseline = null;
+    this._castProbeConfirmed = false;
+    this._castProbeSawRise = false;
+    this._castProbeHadBar = false;
+    this._castProbePulseUntil = 0;
+    this._castProbePulsePower = '';
+    this._powerBarMissUntil = 0;
   }
 
   createState() {
@@ -250,6 +260,11 @@ class FishingMacro {
 
   startCycle() {
     this.releaseAllFishingMouse(true);
+    try {
+      this.session.ensureRodEquipped();
+    } catch {
+      // ignore equip failures — casting may still work if already holding
+    }
     this.selectController();
     this.controller.reset();
     this.state.cycleEnabled = true;
@@ -577,34 +592,207 @@ class FishingMacro {
   resolvePowerBarPath() {
     const mem = this.session.mem;
     if (mem.isCachedAddrValid(this.state.powerBarAddr, 'bar')) {
-      return { bar: this.state.powerBarAddr };
+      return { bar: this.state.powerBarAddr, powerGui: 0 };
+    }
+
+    // Negative cache: missing power GUI is common while idle — don't re-walk every tick.
+    const now = Date.now();
+    if (this._powerBarMissUntil && now < this._powerBarMissUntil) {
+      return { bar: 0, powerGui: 0 };
     }
 
     this.state.powerBarAddr = 0;
     const workspace = this.session.getWorkspaceRoot();
     const localPlayer = this.session.getLocalPlayer();
-    if (!workspace || !localPlayer) return { bar: 0 };
+    if (!workspace || !localPlayer) {
+      this._powerBarMissUntil = now + 150;
+      return { bar: 0, powerGui: 0 };
+    }
 
     const playerName = mem.readInstanceName(localPlayer);
-    if (!playerName || playerName === '<null>') return { bar: 0 };
+    if (!playerName || playerName === '<null>') {
+      this._powerBarMissUntil = now + 150;
+      return { bar: 0, powerGui: 0 };
+    }
 
     const character = mem.findChildByName(workspace, playerName);
-    if (!character) return { bar: 0 };
+    if (!character) {
+      this._powerBarMissUntil = now + 150;
+      return { bar: 0, powerGui: 0 };
+    }
     const rootPart = mem.findChildByName(character, 'HumanoidRootPart');
-    if (!rootPart) return { bar: 0 };
+    if (!rootPart) {
+      this._powerBarMissUntil = now + 150;
+      return { bar: 0, powerGui: 0 };
+    }
     const powerGui = mem.findChildByName(rootPart, 'power');
-    if (!powerGui) return { bar: 0 };
+    if (!powerGui) {
+      this._powerBarMissUntil = now + 120;
+      return { bar: 0, powerGui: 0 };
+    }
     const bar = this.session.findDescendantFrameByName(powerGui, 'bar');
-    if (!bar) return { bar: 0 };
+    if (!bar) {
+      this._powerBarMissUntil = now + 120;
+      return { bar: 0, powerGui };
+    }
 
+    this._powerBarMissUntil = 0;
     this.state.powerBarAddr = bar;
-    return { bar };
+    return { bar, powerGui };
   }
 
   readPowerBarPercent(instanceAddr) {
     const base = this.session.mem.offsets.FrameSizeX || 0;
     const scaleY = this.session.mem.readFloat(Number(instanceAddr) + base + 0x8);
     return clamp(scaleY * 100, 0, 100);
+  }
+
+  /**
+   * True while casting.
+   * Confirms only when the power meter newly appears from absent, or rises.
+   * Equip toggles reset the baseline (hadBar stays true) so flat leftovers
+   * don't log — but a real charge after equip still can.
+   */
+  probePlayerCasting() {
+    if (this.state.phase === 'CASTING') {
+      return {
+        casting: true,
+        power: this.state.powerPercent === '' ? '' : this.state.powerPercent
+      };
+    }
+
+    if (this.state.phase === 'CASTED' || (this.state.cycleEnabled && this.state.phase !== 'OFF')) {
+      this.resetCastProbe();
+      return { casting: false, power: '' };
+    }
+
+    if (!this.session.equippedRod) {
+      this.resetCastProbe();
+      return { casting: false, power: '' };
+    }
+
+    if (this._castProbePulseUntil) {
+      if (Date.now() < this._castProbePulseUntil) {
+        return { casting: true, power: this._castProbePulsePower || '' };
+      }
+      this._castProbePulseUntil = 0;
+      this._castProbePulsePower = '';
+    }
+
+    try {
+      const resolved = this.resolvePowerBarPath();
+      if (!resolved.bar) {
+        const sawRise = this._castProbeSawRise;
+        const saw = this._castProbeLastPercent;
+        const wasConfirmed = this._castProbeConfirmed;
+
+        // Quick tap: meter charged then vanished before the next status emit.
+        if (sawRise && saw != null && saw > 2) {
+          this._castProbePulsePower = Number(saw).toFixed(1);
+          this._castProbePulseUntil = Date.now() + 280;
+          this._castProbeLastPercent = null;
+          this._castProbeBaseline = null;
+          this._castProbeConfirmed = false;
+          this._castProbeSawRise = false;
+          // Block leftover re-appear as a fake cast; rise still works.
+          this._castProbeHadBar = true;
+          this.state.powerBarAddr = 0;
+          return { casting: true, power: this._castProbePulsePower };
+        }
+
+        if (wasConfirmed) {
+          this._castProbeConfirmed = false;
+          this._castProbeSawRise = false;
+          this._castProbeLastPercent = null;
+          this._castProbeBaseline = null;
+          this._castProbeHadBar = true;
+          this.state.powerBarAddr = 0;
+          return { casting: false, power: '' };
+        }
+
+        this._castProbeHadBar = false;
+        this._castProbeLastPercent = null;
+        this._castProbeBaseline = null;
+        this._castProbeConfirmed = false;
+        this._castProbeSawRise = false;
+        this.state.powerBarAddr = 0;
+        return { casting: false, power: '' };
+      }
+
+      const percent = this.readPowerBarPercent(resolved.bar);
+      const appeared = !this._castProbeHadBar;
+      this._castProbeHadBar = true;
+      const last = this._castProbeLastPercent;
+
+      // Fresh meter spawn (was fully gone). Not used after equip reset (hadBar forced true).
+      if (appeared && percent > 2 && percent < 99.5) {
+        this._castProbeSawRise = true;
+        this._castProbeConfirmed = true;
+        this._castProbeLastPercent = percent;
+        return { casting: true, power: percent.toFixed(1) };
+      }
+
+      if (last == null) {
+        // Baseline after equip / leftover — wait for a real rise above this.
+        this._castProbeLastPercent = percent;
+        this._castProbeBaseline = percent;
+        return { casting: false, power: percent.toFixed(1) };
+      }
+
+      const baseline =
+        this._castProbeBaseline == null ? last : this._castProbeBaseline;
+
+      // Charged above the post-equip baseline, or rising between polls.
+      if (percent > last + 0.8 || percent > baseline + 3) {
+        this._castProbeSawRise = true;
+        this._castProbeConfirmed = true;
+      }
+
+      this._castProbeLastPercent = percent;
+
+      if (this._castProbeConfirmed && percent <= 0.5) {
+        this._castProbeConfirmed = false;
+        this._castProbeSawRise = false;
+      }
+
+      if (!this._castProbeConfirmed) {
+        return { casting: false, power: percent.toFixed(1) };
+      }
+
+      return { casting: true, power: percent.toFixed(1) };
+    } catch {
+      this.resetCastProbe();
+      return { casting: false, power: '' };
+    }
+  }
+
+  resetCastProbe() {
+    this._castProbeLastPercent = null;
+    this._castProbeBaseline = null;
+    this._castProbeConfirmed = false;
+    this._castProbeSawRise = false;
+    this._castProbeHadBar = false;
+    this._castProbePulseUntil = 0;
+    this._castProbePulsePower = '';
+    this._powerBarMissUntil = 0;
+    this.state.powerBarAddr = 0;
+  }
+
+  /**
+   * Equip/unequip: re-baseline so a dormant power GUI isn't an "appear" cast,
+   * but the next real charge (rising %) still logs.
+   */
+  suppressCastProbeAfterEquip() {
+    this._castProbeLastPercent = null;
+    this._castProbeBaseline = null;
+    this._castProbeConfirmed = false;
+    this._castProbeSawRise = false;
+    this._castProbePulseUntil = 0;
+    this._castProbePulsePower = '';
+    this._powerBarMissUntil = 0;
+    this.state.powerBarAddr = 0;
+    // Keep hadBar true so leftovers don't look like a fresh meter spawn.
+    this._castProbeHadBar = true;
   }
 
   updateCastingPhase() {
@@ -995,17 +1183,26 @@ class FishingMacro {
     let phase = this.state.phase;
     if (phase === 'APPRAISE') phase = 'APPRAISE ' + (this.state.appraiseState || 'IDLE');
 
+    const castProbe = this.probePlayerCasting();
+    let powerDisplay = this.state.powerPercent;
+    if (powerDisplay === '' && castProbe.casting && castProbe.power !== '') {
+      powerDisplay = castProbe.power;
+    }
+
     return {
       phase,
       rawPhase: this.state.phase,
       appraiseState: this.state.appraiseState,
       appraiseStatus: this.appraise.statusMessage,
       cycleEnabled: this.state.cycleEnabled,
-      power: this.state.powerPercent === '' ? '---' : this.state.powerPercent + '%',
+      playerCasting: !!castProbe.casting,
+      power: powerDisplay === '' ? '---' : powerDisplay + '%',
       castTarget: Math.round(Number(this.state.castThreshold) || this.resolveCastThreshold()),
       progress: this.state.progressPercent === '' ? '---' : this.state.progressPercent + '%',
       rod,
-      rodKind: resolveRodKind(rod),
+      equippedRod: this.session.equippedRod || '',
+      equippedKind: resolveGearType(this.session.equippedRod || ''),
+      rodKind: resolveRodKind(this.session.equippedRod || rod),
       attached: this.session.attached,
       pid: this.session.pid || 0,
       placeId: this.session.attached ? this.session.getPlaceId() : 0,

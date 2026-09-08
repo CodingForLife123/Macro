@@ -71,6 +71,14 @@ Old ZIP releases do **not** support in-app update. Users must install from the S
 5. **Fix Roblox** (`fix_roblox`, default Num7) — reattach + reload/auto-download offsets  
 6. **Reload UI** (`reload`, default Num8)  
 
+### Gear equip (important)
+
+See **`GEAR.md`** (source of truth):
+
+- Fisch **T** = **rod only** (auto-equip on macro start when hands are empty)
+- **Harpoons / guns** = **manual equip by the player** — never auto-equip with T
+- Activity log still detects harpoon equip/unequip when the player does it
+
 **Auto-fix offsets** (Settings → Roblox, on by default): when attach fails after a Roblox update, Macro downloads a fresh dump from `https://offsets.imtheo.lol/offsets.json`, saves it under userData (and refreshes `settings/offsets.json` when writable), then retries attach. Fix Roblox always force-refreshes when auto-fix is enabled.
 
 Hotkeys are user-configurable in Settings. **Never hardcode F1/F2/F7 in user-facing messages** — use `{start_macro}`, `{start_appraise}`, `{fix_roblox}` placeholders via `src/hotkeys.js`.

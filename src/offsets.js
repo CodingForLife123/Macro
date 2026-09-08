@@ -37,7 +37,10 @@ const RENAME_MAP = [
   ['GuiObject', 'Size', 'FrameSizeX'],
   ['GuiObject', 'Rotation', 'FrameRotation'],
   ['GuiBase2D', 'AbsolutePosition', 'AbsolutePosition'],
-  ['GuiBase2D', 'AbsoluteSize', 'AbsoluteSize']
+  ['GuiBase2D', 'AbsoluteSize', 'AbsoluteSize'],
+  ['ProximityPrompt', 'ActionText', 'ProximityActionText'],
+  ['ProximityPrompt', 'ObjectText', 'ProximityObjectText'],
+  ['ProximityPrompt', 'Enabled', 'ProximityEnabled']
 ];
 
 /** @type {Promise<object> | null} */
